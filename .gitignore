@@ -1,0 +1,4 @@
+.history
+*.csv
+pickles
+.ipynb_checkpoints
