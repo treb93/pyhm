@@ -51,11 +51,13 @@ def train_valid_split(valid_graph: dgl.DGLHeteroGraph,
     for etype in etypes:
         all_eids = np.arange(valid_graph.number_of_edges(etype))
         valid_eids = all_eids[int(len(all_eids) * (1 - valid_size)):]
-        valid_uids, valid_iids = valid_graph.find_edges(valid_eids, etype=etype)
+        valid_uids, valid_iids = valid_graph.find_edges(
+            valid_eids, etype=etype)
         valid_uids_all.extend(valid_uids.tolist())
         valid_iids_all.extend(valid_iids.tolist())
         all_eids_dict[etype] = all_eids
-        if (etype == ('user', 'buys', 'item')) or (etype == ('user', 'clicks', 'item') and train_on_clicks):
+        if (etype == ('user', 'buys', 'item')) or (
+                etype == ('user', 'clicks', 'item') and train_on_clicks):
             valid_eids_dict[etype] = valid_eids
     ground_truth_valid = (np.array(valid_uids_all), np.array(valid_iids_all))
     valid_uids = np.array(np.unique(valid_uids_all))
@@ -63,46 +65,65 @@ def train_valid_split(valid_graph: dgl.DGLHeteroGraph,
     # Create partial graph
     train_graph = valid_graph.clone()
     for etype in etypes:
-        if (etype == ('user', 'buys', 'item')) or (etype == ('user', 'clicks', 'item') and train_on_clicks):
+        if (etype == ('user', 'buys', 'item')) or (
+                etype == ('user', 'clicks', 'item') and train_on_clicks):
             train_graph.remove_edges(valid_eids_dict[etype], etype=etype)
-            train_graph.remove_edges(valid_eids_dict[etype], etype=reverse_etype[etype])
+            train_graph.remove_edges(
+                valid_eids_dict[etype],
+                etype=reverse_etype[etype])
             train_eids = np.arange(train_graph.number_of_edges(etype))
             train_eids_dict[etype] = train_eids
 
     if purchases_sample != 1:
         eids = train_eids_dict[('user', 'buys', 'item')]
-        train_eids_dict[('user', 'buys', 'item')] = eids[int(len(eids) * (1 - purchases_sample)):]
+        train_eids_dict[('user', 'buys', 'item')] = eids[int(
+            len(eids) * (1 - purchases_sample)):]
         eids = valid_eids_dict[('user', 'buys', 'item')]
-        valid_eids_dict[('user', 'buys', 'item')] = eids[int(len(eids) * (1 - purchases_sample)):]
+        valid_eids_dict[('user', 'buys', 'item')] = eids[int(
+            len(eids) * (1 - purchases_sample)):]
 
-    if clicks_sample != 1 and ('user', 'clicks', 'item') in train_eids_dict.keys():
+    if clicks_sample != 1 and (
+        'user',
+        'clicks',
+            'item') in train_eids_dict.keys():
         eids = train_eids_dict[('user', 'clicks', 'item')]
-        train_eids_dict[('user', 'clicks', 'item')] = eids[int(len(eids) * (1 - clicks_sample)):]
+        train_eids_dict[('user', 'clicks', 'item')] = eids[int(
+            len(eids) * (1 - clicks_sample)):]
         eids = valid_eids_dict[('user', 'clicks', 'item')]
-        valid_eids_dict[('user', 'clicks', 'item')] = eids[int(len(eids) * (1 - clicks_sample)):]
+        valid_eids_dict[('user', 'clicks', 'item')] = eids[int(
+            len(eids) * (1 - clicks_sample)):]
 
     if remove_train_eids:
         train_graph.remove_edges(train_eids_dict[etype], etype=etype)
-        train_graph.remove_edges(train_eids_dict[etype], etype=reverse_etype[etype])
+        train_graph.remove_edges(
+            train_eids_dict[etype],
+            etype=reverse_etype[etype])
 
     # Generate inference nodes for subtrain & ground truth for subtrain
-    ## Choose the subsample of training set. For now, only users with purchases are included.
-    train_uids, train_iids = valid_graph.find_edges(train_eids_dict[etypes[0]], etype=etypes[0])
+    # Choose the subsample of training set. For now, only users with purchases
+    # are included.
+    train_uids, train_iids = valid_graph.find_edges(
+        train_eids_dict[etypes[0]], etype=etypes[0])
     unique_train_uids = np.unique(train_uids)
-    subtrain_uids = np.random.choice(unique_train_uids, int(len(unique_train_uids) * subtrain_size), replace=False)
-    ## Fetch uids and iids of subtrain sample for all etypes
+    subtrain_uids = np.random.choice(unique_train_uids, int(
+        len(unique_train_uids) * subtrain_size), replace=False)
+    # Fetch uids and iids of subtrain sample for all etypes
     subtrain_uids_all = []
     subtrain_iids_all = []
     for etype in train_eids_dict.keys():
-        train_uids, train_iids = valid_graph.find_edges(train_eids_dict[etype], etype=etype)
+        train_uids, train_iids = valid_graph.find_edges(
+            train_eids_dict[etype], etype=etype)
         subtrain_eids = []
         for i in range(len(train_eids_dict[etype])):
             if train_uids[i].item() in subtrain_uids:
                 subtrain_eids.append(train_eids_dict[etype][i].item())
-        subtrain_uids, subtrain_iids = valid_graph.find_edges(subtrain_eids, etype=etype)
+        subtrain_uids, subtrain_iids = valid_graph.find_edges(
+            subtrain_eids, etype=etype)
         subtrain_uids_all.extend(subtrain_uids.tolist())
         subtrain_iids_all.extend(subtrain_iids.tolist())
-    ground_truth_subtrain = (np.array(subtrain_uids_all), np.array(subtrain_iids_all))
+    ground_truth_subtrain = (
+        np.array(subtrain_uids_all),
+        np.array(subtrain_iids_all))
     subtrain_uids = np.array(np.unique(subtrain_uids_all))
 
     # Generate inference nodes for test
@@ -111,7 +132,7 @@ def train_valid_split(valid_graph: dgl.DGLHeteroGraph,
     all_iids = np.arange(valid_graph.num_nodes('item'))
 
     return train_graph, train_eids_dict, valid_eids_dict, subtrain_uids, valid_uids, test_uids, \
-           all_iids, ground_truth_subtrain, ground_truth_valid, all_eids_dict
+        all_iids, ground_truth_subtrain, ground_truth_valid, all_eids_dict
 
 
 def generate_dataloaders(valid_graph,
@@ -156,9 +177,12 @@ def generate_dataloaders(valid_graph,
     if fixed_params.neighbor_sampler == 'full':
         sampler = dgl.dataloading.MultiLayerFullNeighborSampler(n_layers)
     elif fixed_params.neighbor_sampler == 'partial':
-        sampler = dgl.dataloading.MultiLayerNeighborSampler([1, 1, 1], replace=False)
+        sampler = dgl.dataloading.MultiLayerNeighborSampler(
+            [1, 1, 1], replace=False)
     else:
-        raise KeyError('Neighbor sampler {} not recognized.'.format(fixed_params.neighbor_sampler))
+        raise KeyError(
+            'Neighbor sampler {} not recognized.'.format(
+                fixed_params.neighbor_sampler))
 
     sampler_n = dgl.dataloading.negative_sampler.Uniform(
         params['neg_sample_size']

@@ -31,7 +31,7 @@ log = get_logger(__name__)
 
 global cuda
 
-cuda = torch.cuda.is_available()
+cuda = False
 device = torch.device('cuda')
 if not cuda:
     num_workers = 0
@@ -83,13 +83,27 @@ def train(data, fixed_params, data_paths,
     """
     # Establish hyperparameters
     # Dimensions
-    out_dim = {'Very Small': 32, 'Small': 96, 'Medium': 128, 'Large': 192, 'Very Large': 256}
-    hidden_dim = {'Very Small': 64, 'Small': 192, 'Medium': 256, 'Large': 384, 'Very Large': 512}
+    out_dim = {
+        'Very Small': 32,
+        'Small': 96,
+        'Medium': 128,
+        'Large': 192,
+        'Very Large': 256}
+    hidden_dim = {
+        'Very Small': 64,
+        'Small': 192,
+        'Medium': 256,
+        'Large': 384,
+        'Very Large': 512}
     params['out_dim'] = out_dim[params['embed_dim']]
     params['hidden_dim'] = hidden_dim[params['embed_dim']]
 
     # Popularity
-    use_popularity = {'No': False, 'Small': True, 'Medium': True, 'Large': True}
+    use_popularity = {
+        'No': False,
+        'Small': True,
+        'Medium': True,
+        'Large': True}
     weight_popularity = {'No': 0, 'Small': .01, 'Medium': .05, 'Large': .1}
     days_popularity = {'No': 0, 'Small': 7, 'Medium': 7, 'Large': 7}
     params['use_popularity'] = use_popularity[params['popularity_importance']]
@@ -176,11 +190,14 @@ def train(data, fixed_params, data_paths,
     for etype in train_eids_dict.keys():
         train_eids_len += len(train_eids_dict[etype])
         valid_eids_len += len(valid_eids_dict[etype])
-    num_batches_train = math.ceil(train_eids_len / fixed_params.edge_batch_size)
+    num_batches_train = math.ceil(
+        train_eids_len /
+        fixed_params.edge_batch_size)
     num_batches_subtrain = math.ceil(
         (len(subtrain_uids) + len(all_iids)) / fixed_params.node_batch_size
     )
-    num_batches_val_loss = math.ceil(valid_eids_len / fixed_params.edge_batch_size)
+    num_batches_val_loss = math.ceil(
+        valid_eids_len / fixed_params.edge_batch_size)
     num_batches_val_metrics = math.ceil(
         (len(valid_uids) + len(all_iids)) / fixed_params.node_batch_size
     )
@@ -213,7 +230,10 @@ def train(data, fixed_params, data_paths,
     )
     hp_sentence = f'{str(hp_sentence)[1: -1]} \n'
 
-    save_txt(f'\n \n START - Hyperparameters \n{hp_sentence}', data_paths.result_filepath, "a")
+    save_txt(
+        f'\n \n START - Hyperparameters \n{hp_sentence}',
+        data_paths.result_filepath,
+        "a")
 
     start_time = time.time()
 
@@ -286,7 +306,9 @@ def train(data, fixed_params, data_paths,
                                     params['embedding_layer'],
                                     )
 
-        for ground_truth in [data.ground_truth_purchase_test, data.ground_truth_test]:
+        for ground_truth in [
+                data.ground_truth_purchase_test,
+                data.ground_truth_test]:
             precision, recall, coverage = get_metrics_at_k(
                 embeddings,
                 valid_graph,
@@ -323,15 +345,12 @@ def train(data, fixed_params, data_paths,
 
                 save_txt(result_sport, data_paths.result_filepath, mode='a')
 
-            already_bought_dict = create_already_bought(valid_graph,
-                                                        all_eids_dict[('user', 'buys', 'item')],
-                                                        )
+            already_bought_dict = create_already_bought(
+                valid_graph, all_eids_dict[('user', 'buys', 'item')], )
             already_clicked_dict = None
             if fixed_params.discern_clicks:
-                already_clicked_dict = create_already_bought(valid_graph,
-                                                             all_eids_dict[('user', 'clicks', 'item')],
-                                                             etype='clicks',
-                                                             )
+                already_clicked_dict = create_already_bought(
+                    valid_graph, all_eids_dict[('user', 'clicks', 'item')], etype='clicks', )
 
             users, items = data.ground_truth_test
             ground_truth_dict = create_ground_truth(users, items)
@@ -371,8 +390,7 @@ def train(data, fixed_params, data_paths,
                     "COVERAGE \n|| All transactions : "
                     "Generic {:.1f}% | Junior {:.1f}% | Male {:.1f}% | Female {:.1f}% | Eco {:.1f}% "
                     "\n|| Recommendations : "
-                    "Generic {:.1f}% | Junior {:.1f}% | Male {:.1f}% | Female {:.1f} | Eco {:.1f}%%"
-                        .format(
+                    "Generic {:.1f}% | Junior {:.1f}% | Male {:.1f}% | Female {:.1f} | Eco {:.1f}%%" .format(
                         coverage_metrics['generic_mean_whole'] * 100,
                         coverage_metrics['junior_mean_whole'] * 100,
                         coverage_metrics['male_mean_whole'] * 100,
@@ -383,8 +401,7 @@ def train(data, fixed_params, data_paths,
                         coverage_metrics['male_mean_recs'] * 100,
                         coverage_metrics['female_mean_recs'] * 100,
                         coverage_metrics['eco_mean_recs'] * 100,
-                    )
-                )
+                    ))
                 log.info(sentence)
                 save_txt(sentence, data_paths.result_filepath, mode='a')
 
@@ -401,10 +418,11 @@ def train(data, fixed_params, data_paths,
 
         del params['remove']
         # Save model if the recall is greater than 8%
-        if (recall > 0.08) & (fixed_params.item_id_type == 'SPECIFIC ITEM_IDENTIFIER') \
-                or (recall > 0.2) & (fixed_params.item_id_type == 'GENERAL ITEM_IDENTIFIER'):
+        if (recall > 0.08) & (fixed_params.item_id_type == 'SPECIFIC ITEM_IDENTIFIER') or (
+                recall > 0.2) & (fixed_params.item_id_type == 'GENERAL ITEM_IDENTIFIER'):
             date = str(datetime.datetime.now())[:-10].replace(' ', '')
-            torch.save(trained_model.state_dict(), f'models/HP_Recall_{recall * 100:.2f}_{date}.pth')
+            torch.save(trained_model.state_dict(),
+                       f'models/HP_Recall_{recall * 100:.2f}_{date}.pth')
             # Save all necessary params
             save_outputs(
                 {
@@ -418,22 +436,24 @@ def train(data, fixed_params, data_paths,
         if fixed_params.run_inference > 0:
             with torch.no_grad():
                 print('On normal params')
-                inference_recall = inference_hp.inference_fn(trained_model,
-                                                             remove=fixed_params.remove_on_inference,
-                                                             fixed_params=fixed_params,
-                                                             overwrite_fixed_params=False,
-                                                             **params)
+                inference_recall = inference_hp.inference_fn(
+                    trained_model,
+                    remove=fixed_params.remove_on_inference,
+                    fixed_params=fixed_params,
+                    overwrite_fixed_params=False,
+                    **params)
                 if fixed_params.run_inference > 1:
                     print('For all users')
                     del params['days_of_purchases'], params['days_of_clicks'], params['lifespan_of_items']
-                    all_users_inference_recall = inference_hp.inference_fn(trained_model,
-                                                                           remove=fixed_params.remove_on_inference,
-                                                                           fixed_params=fixed_params,
-                                                                           overwrite_fixed_params=True,
-                                                                           days_of_purchases=710,
-                                                                           days_of_clicks=710,
-                                                                           lifespan_of_items=710,
-                                                                           **params)
+                    all_users_inference_recall = inference_hp.inference_fn(
+                        trained_model,
+                        remove=fixed_params.remove_on_inference,
+                        fixed_params=fixed_params,
+                        overwrite_fixed_params=True,
+                        days_of_purchases=710,
+                        days_of_clicks=710,
+                        lifespan_of_items=710,
+                        **params)
 
     recap = f"BEST RECALL on 1) Validation set : {best_metrics['recall'] * 100:.2f}%" \
             f'\n2) Test set : {recall * 100:.2f}%'
@@ -482,37 +502,60 @@ class SearchableHyperparameters:
     Weight_popularity :
         Weight of the popularity score
     """
+
     def __init__(self):
-        self.aggregator_hetero = Categorical(categories=['mean', 'sum', 'max'], name='aggregator_hetero')
-        self.aggregator_type = Categorical(categories=['mean', 'mean_nn', 'pool_nn'], name='aggregator_type')  # LSTM?
-        self.clicks_sample = Categorical(categories=[.2, .3, .4], name='clicks_sample')
+        self.aggregator_hetero = Categorical(
+            categories=['mean', 'sum', 'max'], name='aggregator_hetero')
+        self.aggregator_type = Categorical(
+            categories=[
+                'mean',
+                'mean_nn',
+                'pool_nn'],
+            name='aggregator_type')  # LSTM?
+        self.clicks_sample = Categorical(
+            categories=[.2, .3, .4], name='clicks_sample')
         self.delta = Real(low=0.15, high=0.35, prior='log-uniform',
                           name='delta')
         self.dropout = Real(low=0., high=0.8, prior='uniform',
                             name='dropout')
-        self.embed_dim = Categorical(categories=['Very Small', 'Small', 'Medium', 'Large', 'Very Large'],
-                                     name='embed_dim')
-        self.embedding_layer = Categorical(categories=[True, False], name='embedding_layer')
+        self.embed_dim = Categorical(
+            categories=[
+                'Very Small',
+                'Small',
+                'Medium',
+                'Large',
+                'Very Large'],
+            name='embed_dim')
+        self.embedding_layer = Categorical(
+            categories=[True, False], name='embedding_layer')
         self.lr = Real(low=1e-4, high=1e-2, prior='log-uniform', name='lr')
         self.n_layers = Integer(low=3, high=5, name='n_layers')
         self.neg_sample_size = Integer(low=700, high=3000,
                                        name='neg_sample_size')
         self.norm = Categorical(categories=[True, False], name='norm')
-        self.popularity_importance = Categorical(categories=['No', 'Small', 'Medium', 'Large'],
-                                                 name='popularity_importance')
-        self.purchases_sample = Categorical(categories=[.4, .5, .6], name='purchases_sample')
-        self.use_recency = Categorical(categories=[True, False], name='use_recency')
+        self.popularity_importance = Categorical(
+            categories=[
+                'No',
+                'Small',
+                'Medium',
+                'Large'],
+            name='popularity_importance')
+        self.purchases_sample = Categorical(
+            categories=[.4, .5, .6], name='purchases_sample')
+        self.use_recency = Categorical(
+            categories=[True, False], name='use_recency')
 
         # List all the attributes in a list.
         # This is equivalent to [self.hidden_dim_HP, self.out_dim_HP ...]
         self.dimensions = [self.__getattribute__(attr)
                            for attr in dir(self) if '__' not in attr]
-        self.default_parameters = ['sum', 'mean_nn', .3, 0.266, .5, 'Medium', False,
-                                   0.00565, 3, 2500, True, 'No', .5, True]
+        self.default_parameters = ['sum', 'mean_nn', .3, 0.266, .5,
+                                   'Medium', False, 0.00565, 3, 2500, True, 'No', .5, True]
 
 
 searchable_params = SearchableHyperparameters()
 fitness_params = None
+
 
 @use_named_args(dimensions=searchable_params.dimensions)
 def fitness(**params):
@@ -536,7 +579,8 @@ def fitness(**params):
 @click.option('--num_epochs', default=10, help='Number of epochs')
 @click.option('--start_epoch', default=0, help='Start epoch')
 @click.option('--patience', default=3, help='Patience for early stopping')
-@click.option('--edge_batch_size', default=2048, help='Number of edges in a train / validation batch')
+@click.option('--edge_batch_size', default=2048,
+              help='Number of edges in a train / validation batch')
 @click.option('--item_id_type', default='SPECIFIC ITEM IDENTIFIER',
               help='Identifier for the item. This code allows 2 types: SPECIFIC (e.g. item SKU'
                    'or GENERAL (e.g. item family)')
@@ -555,8 +599,14 @@ def main(from_beginning, verbose, visualization, check_embedding,
         log.setLevel(logging.INFO)
 
     data_paths = DataPaths()
-    fixed_params = FixedParameters(num_epochs, start_epoch, patience, edge_batch_size,
-                                   remove, item_id_type, duplicates)
+    fixed_params = FixedParameters(
+        num_epochs,
+        start_epoch,
+        patience,
+        edge_batch_size,
+        remove,
+        item_id_type,
+        duplicates)
 
     checkpoint_saver = CheckpointSaver(
         f'checkpoint{str(datetime.datetime.now())[:-10]}.pkl',
@@ -597,7 +647,8 @@ def main(from_beginning, verbose, visualization, check_embedding,
             func=fitness,
             dimensions=searchable_params.dimensions,
             n_calls=200,
-            n_initial_points=-len(x0),  # Workaround suggested to correct the error when resuming training
+            # Workaround suggested to correct the error when resuming training
+            n_initial_points=-len(x0),
             acq_func='EI',
             x0=x0,
             y0=y0,

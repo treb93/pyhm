@@ -80,55 +80,72 @@ def format_dfs(
     sport_onehot_df = read_data(sport_onehot_path)
 
     # User-item interaction. We allow direct df instead of path: check which was passed.
+    # TODO: Remove this
     if isinstance(train_path, str):
         user_item_train = read_data(train_path)
     elif isinstance(train_path, pd.DataFrame):
         user_item_train = train_path
     else:
-        raise TypeError(f'Type of {train_path} not recognized. Should be str or pd.DataFrame')
+        raise TypeError(
+            f'Type of {train_path} not recognized. Should be str or pd.DataFrame')
     if isinstance(test_path, str):
         user_item_test = read_data(test_path)
     elif isinstance(test_path, pd.DataFrame):
         user_item_test = test_path
     else:
-        raise TypeError(f'Type of {test_path} not recognized. Should be str or pd.DataFrame')
+        raise TypeError(
+            f'Type of {test_path} not recognized. Should be str or pd.DataFrame')
 
+    # TODO: Put this in sub functions
     if days_of_purchases < 710:
-        most_recent_date = datetime.strptime(max(user_item_train.hit_date), '%Y-%m-%d')
+        most_recent_date = datetime.strptime(
+            max(user_item_train.hit_date), '%Y-%m-%d')
         limit_date = datetime.strftime(
             (most_recent_date - timedelta(days=int(days_of_purchases))),
             format='%Y-%m-%d'
         )
-        user_item_train = user_item_train[(user_item_train.hit_date >= limit_date) | (user_item_train.buy == 0)]
+        user_item_train = user_item_train[(
+            user_item_train.hit_date >= limit_date) | (user_item_train.buy == 0)]
 
+    # TODO: Remove this
     if days_of_clicks < 710:
-        most_recent_date = datetime.strptime(max(user_item_train.hit_date), '%Y-%m-%d')
+        most_recent_date = datetime.strptime(
+            max(user_item_train.hit_date), '%Y-%m-%d')
         limit_date = datetime.strftime(
             (most_recent_date - timedelta(days=int(days_of_clicks))),
             format='%Y-%m-%d'
         )
-        user_item_train = user_item_train[(user_item_train.hit_date >= limit_date) | (user_item_train.buy == 1)]
+        user_item_train = user_item_train[(
+            user_item_train.hit_date >= limit_date) | (user_item_train.buy == 1)]
 
     if lifespan_of_items < days_of_purchases:
-        most_recent_date = datetime.strptime(max(user_item_train.hit_date), '%Y-%m-%d')
+        most_recent_date = datetime.strptime(
+            max(user_item_train.hit_date), '%Y-%m-%d')
         limit_date = datetime.strftime(
             (most_recent_date - timedelta(days=int(lifespan_of_items))),
             format='%Y-%m-%d'
         )
-        item_list = user_item_train[user_item_train.hit_date >= limit_date]['SPECIFIC ITEM IDENTIFIER'].unique()
-        user_item_train = user_item_train[user_item_train['SPECIFIC ITEM IDENTIFIER'].isin(item_list)]
+        item_list = user_item_train[user_item_train.hit_date >=
+                                    limit_date]['SPECIFIC ITEM IDENTIFIER'].unique()
+        user_item_train = user_item_train[user_item_train['SPECIFIC ITEM IDENTIFIER'].isin(
+            item_list)]
 
     if remove > 0:
         ctm_list = user_item_train[ctm_id_type].unique()
         np.random.shuffle(ctm_list)
         ctm_list = ctm_list[:int(len(ctm_list) * (1 - remove))]
-        user_item_train = user_item_train[user_item_train[ctm_id_type].isin(ctm_list)]
-        user_item_test = user_item_test[user_item_test[ctm_id_type].isin(ctm_list)]
+        user_item_train = user_item_train[user_item_train[ctm_id_type].isin(
+            ctm_list)]
+        user_item_test = user_item_test[user_item_test[ctm_id_type].isin(
+            ctm_list)]
 
     if remove == 0:
-        # Make sure that if no observations were removed by days of clicks / purchases, no user is only in test set
-        user_item_test = user_item_test[user_item_test[ctm_id_type].isin(user_item_train[ctm_id_type].unique())]
+        # Make sure that if no observations were removed by days of clicks /
+        # purchases, no user is only in test set
+        user_item_test = user_item_test[user_item_test[ctm_id_type].isin(
+            user_item_train[ctm_id_type].unique())]
 
+    # TODO: remove this
     if item_id_type == 'GENERAL ITEM IDENTIFIER':
         user_item_train = user_item_train.merge(
             item_feat_df[['SPECIFIC ITEM IDENTIFIER', 'GENERAL ITEM IDENTIFIER']].drop_duplicates(),
@@ -141,25 +158,27 @@ def format_dfs(
         assert user_item_train.general_item_identifier.isna().sum() == 0
         assert user_item_test.general_item_identifier.isna().sum() == 0
 
-
     # Item-sport interaction
     item_sport_interaction = read_data(item_sport_path)
     if lifespan_of_items < days_of_purchases:
         item_sport_interaction = item_sport_interaction[item_sport_interaction['SPECIFIC ITEM IDENTIFIER'].isin(
             item_list)]
+
+    # TODO: Remove this
     if item_id_type == 'GENERAL ITEM IDENTIFIER':
         item_sport_interaction = item_sport_interaction.merge(
             item_feat_df[['SPECIFIC ITEM IDENTIFIER', 'GENERAL ITEM IDENTIFIER']],
-                                                              how='left',
-                                                              on='SPECIFIC ITEM IDENTIFIER')
+            how='left',
+            on='SPECIFIC ITEM IDENTIFIER')
+
     # Drop duplicates if not item_id_type not model number
     item_sport_interaction.drop_duplicates(inplace=True)
-
 
     # User-sport interaction
     user_sport_interaction = read_data(user_sport_path)
     if remove > 0:
-        user_sport_interaction = user_sport_interaction[user_sport_interaction[ctm_id_type].isin(ctm_list)]
+        user_sport_interaction = user_sport_interaction[user_sport_interaction[ctm_id_type].isin(
+            ctm_list)]
 
     # Sport-sportgroups interaction
     sport_sportg_interaction = read_data(sport_sportg_path)
@@ -176,7 +195,7 @@ def format_dfs(
         print(f'out of {len(test_users)}')
 
     return user_item_train, user_item_test, item_sport_interaction, user_sport_interaction, \
-           sport_sportg_interaction, item_feat_df, user_feat_df, sport_feat_df, sport_onehot_df
+        sport_sportg_interaction, item_feat_df, user_feat_df, sport_feat_df, sport_onehot_df
 
 
 def create_ids(user_item_train: pd.DataFrame,
@@ -210,8 +229,12 @@ def create_ids(user_item_train: pd.DataFrame,
     # Create item ids
     train_pdt = user_item_train[item_id_type].unique().tolist()
     all_pdt = item_feat_df[item_id_type].unique().tolist()
+
+    # TODO: Refactooooo
     unseen_pdt = [pdt for pdt in all_pdt if pdt not in train_pdt]
-    train_pdt.extend(unseen_pdt)  # DGL requires that node IDs are continuous; unseen are at the end
+
+    # DGL requires that node IDs are continuous; unseen are at the end
+    train_pdt.extend(unseen_pdt)
     pdt_id = pd.DataFrame(train_pdt,
                           columns=[item_id_type])
     pdt_id['pdt_new_id'] = pdt_id.index
@@ -219,8 +242,10 @@ def create_ids(user_item_train: pd.DataFrame,
     # Create sport ids
     unique_sports = np.append(sport_sportg_interaction.sports_id.unique(),
                               sport_sportg_interaction.sportsgroup_id.unique())
-    unique_sports = np.unique(np.append(unique_sports,
-                                        user_sport_interaction[spt_id_type].unique()))
+    unique_sports = np.unique(
+        np.append(
+            unique_sports,
+            user_sport_interaction[spt_id_type].unique()))
     spt_id = pd.DataFrame(unique_sports, columns=[spt_id_type])
     spt_id['spt_new_id'] = spt_id.index
 
@@ -273,21 +298,33 @@ def df_to_adjacency_list(user_item_train: pd.DataFrame,
                                             on=item_id_type)
 
     if duplicates in ['keep_last', 'count_occurrence']:
-        grouped_df = user_item_train.groupby(['buy', 'ctm_new_id', 'pdt_new_id']).specific_item_identifier.count()
+        grouped_df = user_item_train.groupby(
+            ['buy', 'ctm_new_id', 'pdt_new_id']).specific_item_identifier.count()
         grouped_df = pd.DataFrame(grouped_df).reset_index()
-        grouped_df.columns = ['buy', 'ctm_new_id', 'pdt_new_id', 'num_interaction']
+        grouped_df.columns = [
+            'buy',
+            'ctm_new_id',
+            'pdt_new_id',
+            'num_interaction']
 
-        user_item_train.drop_duplicates(subset=['buy', 'ctm_new_id', 'pdt_new_id'],
-                                        keep='last',
-                                        inplace=True)  # Keep last interaction
-        user_item_train.sort_values(by=['buy', 'ctm_new_id', 'pdt_new_id'],
+        user_item_train.drop_duplicates(
+            subset=[
+                'buy',
+                'ctm_new_id',
+                'pdt_new_id'],
+            keep='last',
+            inplace=True)  # Keep last interaction
+        user_item_train.sort_values(by=['buy',
+                                        'ctm_new_id',
+                                        'pdt_new_id'],
                                     ignore_index=True,
                                     inplace=True)  # Have same order as grouped_df
         assert len(user_item_train) == len(grouped_df)
         user_item_train['num_interaction'] = grouped_df.num_interaction.values
-        user_item_train.sort_values(by='hit_timestamp',
-                                    ignore_index=True,
-                                    inplace=True)  # Reorder by date to keep sequential order
+        user_item_train.sort_values(
+            by='hit_timestamp',
+            ignore_index=True,
+            inplace=True)  # Reorder by date to keep sequential order
         if discern_clicks:
             adjacency_dict.update(
                 {
@@ -326,8 +363,10 @@ def df_to_adjacency_list(user_item_train: pd.DataFrame,
     user_item_test = user_item_test.merge(pdt_id,
                                           how='left',
                                           on=item_id_type)
-    test_purchase_src = user_item_test[user_item_test.buy == 1].ctm_new_id.values
-    test_purchase_dst = user_item_test[user_item_test.buy == 1].pdt_new_id.values
+    test_purchase_src = user_item_test[user_item_test.buy ==
+                                       1].ctm_new_id.values
+    test_purchase_dst = user_item_test[user_item_test.buy ==
+                                       1].pdt_new_id.values
     ground_truth_purchase_test = (test_purchase_src, test_purchase_dst)
 
     test_src = user_item_test.ctm_new_id.values
@@ -341,7 +380,8 @@ def df_to_adjacency_list(user_item_train: pd.DataFrame,
     item_sport_interaction = item_sport_interaction.merge(pdt_id,
                                                           how='left',
                                                           on=item_id_type)
-    item_sport_interaction.dropna(inplace=True)  # drop items with no sports associated
+    # drop items with no sports associated
+    item_sport_interaction.dropna(inplace=True)
 
     adjacency_dict['item_sport_src'] = item_sport_interaction.pdt_new_id.values
     adjacency_dict['item_sport_dst'] = item_sport_interaction.spt_new_id.values
@@ -359,17 +399,16 @@ def df_to_adjacency_list(user_item_train: pd.DataFrame,
     adjacency_dict['user_sport_dst'] = user_sport_interaction.spt_new_id.values
 
     # Sport sportgroups
-    sport_sportg_interaction = sport_sportg_interaction.merge(spt_id,
-                                                              how='left',
-                                                              left_on='sports_id',
-                                                              right_on=spt_id_type)
-    sport_sportg_interaction = sport_sportg_interaction.merge(spt_id,
-                                                              how='left',
-                                                              left_on='sportsgroup_id',
-                                                              right_on=spt_id_type)
+    sport_sportg_interaction = sport_sportg_interaction.merge(
+        spt_id, how='left', left_on='sports_id', right_on=spt_id_type)
+    sport_sportg_interaction = sport_sportg_interaction.merge(
+        spt_id, how='left', left_on='sportsgroup_id', right_on=spt_id_type)
 
     adjacency_dict['sport_sportg_src'] = sport_sportg_interaction.spt_new_id_x.values
     adjacency_dict['sport_sportg_dst'] = sport_sportg_interaction.spt_new_id_y.values
+
+    print("Nombre de sport dans le tableau: ",
+          item_sport_interaction.spt_new_id.value_counts())
 
     return adjacency_dict, ground_truth_test, ground_truth_purchase_test, user_item_train
 
@@ -438,7 +477,8 @@ def import_features(g: dgl.DGLHeteroGraph,
         item_feat_df = item_feat_df.merge(pdt_id,
                                           how='left',
                                           on=item_id_type)
-        item_feat_df = item_feat_df[item_feat_df.pdt_new_id < g.number_of_nodes('item')]  # Only IDs that are in graph
+        item_feat_df = item_feat_df[item_feat_df.pdt_new_id < g.number_of_nodes(
+            'item')]  # Only IDs that are in graph
 
         ids = item_feat_df.pdt_new_id.values.astype(int)
         feats = np.stack((item_feat_df.is_junior.values,
@@ -460,10 +500,17 @@ def import_features(g: dgl.DGLHeteroGraph,
 
     # Sport one-hot
     if 'sport' in g.ntypes:
-        sport_onehot_df = sport_onehot_df.merge(spt_id, how='inner', on=spt_id_type)
-        sport_onehot_df.sort_values(by='spt_new_id',
-                                    inplace=True)  # Values need to be sorted by node id to align with g.nodes['sport']
-        feats = sport_onehot_df.drop(labels=[spt_id_type, 'spt_new_id'], axis=1).values
+        sport_onehot_df = sport_onehot_df.merge(
+            spt_id, how='inner', on=spt_id_type)
+        # Values need to be sorted by node id to align with g.nodes['sport']
+        sport_onehot_df.sort_values(by='spt_new_id', inplace=True)
+        feats = sport_onehot_df.drop(
+            labels=[
+                spt_id_type,
+                'spt_new_id'],
+            axis=1).values
+        print("Nombre de sports: ", g.num_nodes('sport'))
+
         assert feats.shape[0] == g.num_nodes('sport')
         sport_feat = torch.tensor(feats).float()
         features_dict['sport_feat'] = sport_feat

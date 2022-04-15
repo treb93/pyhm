@@ -8,16 +8,16 @@ from src.builder import (create_ids, df_to_adjacency_list,
 
 class DataPaths:
     def __init__(self):
-        self.result_filepath = 'TXT FILE WHERE TO LOG THE RESULTS .txt'
-        self.sport_feat_path = 'FEATURE DATASET, SPORTS (sport names) .csv'
-        self.train_path = 'INTERACTION LIST, USER-ITEM (Train dataset).csv'
-        self.test_path = 'INTERACTION LIST, USER-ITEM (Train dataset).csv'
-        self.item_sport_path = 'INTERACTION LIST, ITEM-SPORT .csv'
-        self.user_sport_path = 'INTERACTION LIST, USER-SPORT .csv'
-        self.sport_sportg_path = 'INTERACTION LIST, SPORT-SPORT .csv'
-        self.item_feat_path = 'FEATURE DATASET, ITEMS .csv'
-        self.user_feat_path = 'FEATURE DATASET, USERS.csv'
-        self.sport_onehot_path = 'FEATURE DATASET, SPORTS (one-hot vectors) .csv'
+        self.result_filepath = 'outputs/results.txt'
+        self.sport_feat_path = '../pickles/gnn_sports.pkl'
+        self.train_path = '../pickles/gnn_user_item.pkl'
+        self.test_path = '../pickles/gnn_user_item.pkl'
+        self.item_sport_path = '../pickles/gnn_item_sport.pkl'
+        self.user_sport_path = '../pickles/gnn_user_sport.pkl'
+        self.sport_sportg_path = '../pickles/gnn_sport_groups.pkl'
+        self.item_feat_path = '../pickles/gnn_item_features.pkl'
+        self.user_feat_path = '../pickles/gnn_user_features.pkl'
+        self.sport_onehot_path = '../pickles/gnn_sports.pkl'
 
 
 class FixedParameters:
@@ -76,7 +76,7 @@ class FixedParameters:
         if self.discern_clicks:
             self.etype.append(('user', 'clicks', 'item'))
         self.explore = True
-        self.include_sport = True
+        self.include_sport = False
         self.item_id_type = item_id_type
         self.k = 10
         self.lifespan_of_items = 180
@@ -92,8 +92,7 @@ class FixedParameters:
         self.remove_on_inference = .7
         self.remove_train_eids = False
         self.report_model_coverage = False
-        self.reverse_etype = {('user', 'buys', 'item')
-                               : ('item', 'bought-by', 'user')}
+        self.reverse_etype = {('user', 'buys', 'item'): ('item', 'bought-by', 'user')}
         if self.discern_clicks:
             self.reverse_etype[('user', 'clicks', 'item')] = (
                 'item', 'clicked-by', 'user')
@@ -124,6 +123,7 @@ class DataLoader:
 
     def __init__(self, data_paths, fixed_params):
         self.data_paths = data_paths
+
         (
             self.user_item_train,
             self.user_item_test,
@@ -152,6 +152,7 @@ class DataLoader:
             fixed_params.lifespan_of_items,
             fixed_params.report_model_coverage,
         )
+
         if fixed_params.report_model_coverage:
             print('Reporting model coverage')
             (_, _, _, _, _, _, _, _
@@ -206,6 +207,7 @@ class DataLoader:
             duplicates=fixed_params.duplicates,
         )
 
+        # TODO: Ne pas compiler deux dictionnaires
         if fixed_params.discern_clicks:
             self.graph_schema = {('user',
                                   'buys',

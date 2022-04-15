@@ -97,8 +97,10 @@ def train_model(model,
                     neg_src, neg_dst = neg_g.edges(etype=etype)
                     neg_src = nids[etype[0]][neg_src]
                     neg_dst = nids[etype[2]][neg_dst]
-                    negative_mask_tensor = valid_graph.has_edges_between(neg_src, neg_dst, etype=etype)
-                    negative_mask[etype] = negative_mask_tensor.type(torch.float)
+                    negative_mask_tensor = valid_graph.has_edges_between(
+                        neg_src, neg_dst, etype=etype)
+                    negative_mask[etype] = negative_mask_tensor.type(
+                        torch.float)
                     if cuda:
                         negative_mask[etype] = negative_mask[etype].to(device)
             if cuda:
@@ -152,7 +154,9 @@ def train_model(model,
             for _, pos_g, neg_g, blocks in edgeloader_valid:
                 i += 1
                 if i % 10 == 0:
-                    print("Edge batch {} out of {}".format(i, num_batches_val_loss))
+                    print(
+                        "Edge batch {} out of {}".format(
+                            i, num_batches_val_loss))
 
                 # Negative mask
                 negative_mask = {}
@@ -162,10 +166,13 @@ def train_model(model,
                         neg_src, neg_dst = neg_g.edges(etype=etype)
                         neg_src = nids[etype[0]][neg_src]
                         neg_dst = nids[etype[2]][neg_dst]
-                        negative_mask_tensor = valid_graph.has_edges_between(neg_src, neg_dst, etype=etype)
-                        negative_mask[etype] = negative_mask_tensor.type(torch.float)
+                        negative_mask_tensor = valid_graph.has_edges_between(
+                            neg_src, neg_dst, etype=etype)
+                        negative_mask[etype] = negative_mask_tensor.type(
+                            torch.float)
                         if cuda:
-                            negative_mask[etype] = negative_mask[etype].to(device)
+                            negative_mask[etype] = negative_mask[etype].to(
+                                device)
 
                 if cuda:
                     blocks = [b.to(device) for b in blocks]
@@ -201,7 +208,7 @@ def train_model(model,
             model.val_loss_list.append(val_avg_loss)
 
         ############
-        # METRICS PER EPOCH 
+        # METRICS PER EPOCH
         if get_metrics and epoch % 10 == 1:
             model.eval()
             with torch.no_grad():
@@ -257,7 +264,7 @@ def train_model(model,
                                                                            use_popularity,
                                                                            weight_popularity
                                                                            )
-                sentence = '''Epoch {:05d} || TRAINING Loss {:.5f} | Precision {:.3f}% | Recall {:.3f}% | Coverage {:.2f}% 
+                sentence = '''Epoch {:05d} || TRAINING Loss {:.5f} | Precision {:.3f}% | Recall {:.3f}% | Coverage {:.2f}%
                 || VALIDATION Loss {:.5f} | Precision {:.3f}% | Recall {:.3f}% | Coverage {:.2f}% '''.format(
                     epoch, train_avg_loss, train_precision * 100, train_recall * 100, train_coverage * 100,
                     val_avg_loss, val_precision * 100, val_recall * 100, val_coverage * 100)
@@ -269,12 +276,16 @@ def train_model(model,
                 model.train_coverage_list.append(train_coverage * 10)
                 model.val_precision_list.append(val_precision * 100)
                 model.val_recall_list.append(val_recall * 100)
-                model.val_coverage_list.append(val_coverage * 10)  # just *10 for viz purposes
+                model.val_coverage_list.append(
+                    val_coverage * 10)  # just *10 for viz purposes
 
                 # Visualization of best metric
                 if val_recall > max_metric:
                     max_metric = val_recall
-                    best_metrics = {'recall': val_recall, 'precision': val_precision, 'coverage': val_coverage}
+                    best_metrics = {
+                        'recall': val_recall,
+                        'precision': val_precision,
+                        'coverage': val_coverage}
 
         else:
             sentence = "Epoch {:05d} | Training Loss {:.5f} | Validation Loss {:.5f} | ".format(
@@ -334,16 +345,25 @@ def get_embeddings(g,
     for input_nodes, output_nodes, blocks in nodeloader_test:
         i2 += 1
         if i2 % 10 == 0:
-            print("Computing embeddings: Batch {} out of {}".format(i2, num_batches_valid))
+            print(
+                "Computing embeddings: Batch {} out of {}".format(
+                    i2, num_batches_valid))
         if cuda:
             blocks = [b.to(device) for b in blocks]
         input_features = blocks[0].srcdata['features']
         if embedding_layer:
-            input_features['user'] = trained_model.user_embed(input_features['user'])
-            input_features['item'] = trained_model.item_embed(input_features['item'])
+            input_features['user'] = trained_model.user_embed(
+                input_features['user'])
+            input_features['item'] = trained_model.item_embed(
+                input_features['item'])
             if 'sport' in input_features.keys():
-                input_features['sport'] = trained_model.sport_embed(input_features['sport'])
+                input_features['sport'] = trained_model.sport_embed(
+                    input_features['sport'])
         h = trained_model.get_repr(blocks, input_features)
         for ntype in h.keys():
+            # TODO: Resolve this
+            if ntype not in output_nodes.keys():
+                print(f"WARNING no output node {ntype}")
+                continue
             y[ntype][output_nodes[ntype]] = h[ntype]
     return y

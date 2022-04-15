@@ -2,3 +2,6 @@
 *.csv
 pickles
 .ipynb_checkpoints
+gnn/outputs
+gnn/plots
+__pycache__
