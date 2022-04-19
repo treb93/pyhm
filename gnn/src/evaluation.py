@@ -38,13 +38,15 @@ def fetch_recs_for_users(user,
     """
     for iid in user_dict[user]:
         try:
-            info1, info2, info3 = get_item_by_id(iid, pdt_id, item_feat_df, item_id_type)
+            info1, info2, info3 = get_item_by_id(
+                iid, pdt_id, item_feat_df, item_id_type)
             sentence = info1 + ', ' + info2 + info3
             if ground_truth_purchase_dict is not None:
                 if iid in ground_truth_purchase_dict[user]:
-                    count_purchases = len([item for item in ground_truth_purchase_dict[user] if item == iid])
+                    count_purchases = len(
+                        [item for item in ground_truth_purchase_dict[user] if item == iid])
                     sentence += f' ----- BOUGHT {count_purchases} TIME(S)'
-        except:
+        except BaseException:
             sentence = 'No name'
         save_txt(sentence, result_filepath, mode='a')
 
@@ -75,7 +77,7 @@ def explore_recs(recs: dict,
                                  item_feat_df,
                                  item_id_type,
                                  result_filepath)
-        except:
+        except BaseException:
             save_txt('Nothing', result_filepath, mode='a')
 
         save_txt('\nCustomer clicked on', result_filepath, mode='a')
@@ -86,7 +88,7 @@ def explore_recs(recs: dict,
                                  item_feat_df,
                                  item_id_type,
                                  result_filepath)
-        except:
+        except BaseException:
             save_txt('No click data', result_filepath, mode='a')
 
         save_txt('\nGot recommended', result_filepath, mode='a')
@@ -107,7 +109,8 @@ def explore_recs(recs: dict,
                              ground_truth_purchase_dict)
 
     # user with 1 item
-    choices = random.sample([uid for uid, v in already_bought_dict.items() if len(v) == 1 and uid in recs.keys()], 2)
+    choices = random.sample([uid for uid, v in already_bought_dict.items() if len(
+        v) == 1 and uid in recs.keys()], 2)
     for user in choices:
         save_txt('\nCustomer bought', result_filepath, mode='a')
         try:
@@ -117,7 +120,7 @@ def explore_recs(recs: dict,
                                  item_feat_df,
                                  item_id_type,
                                  result_filepath)
-        except:
+        except BaseException:
             save_txt('Nothing', result_filepath, mode='a')
 
         save_txt('\nCustomer clicked on', result_filepath, mode='a')
@@ -128,7 +131,7 @@ def explore_recs(recs: dict,
                                  item_feat_df,
                                  item_id_type,
                                  result_filepath)
-        except:
+        except BaseException:
             save_txt('No click data', result_filepath, mode='a')
 
         save_txt('\nGot recommended', result_filepath, mode='a')
@@ -165,14 +168,18 @@ def explore_sports(h,
         # fetch name of sport id
         try:
             old_sid = spt_id.sport_id[spt_id.spt_new_id == sid].item()
-            chosen_name = sport_feat_df.sport_label[sport_feat_df.sport_id == old_sid].item()
-        except:
+            chosen_name = sport_feat_df.sport_label[sport_feat_df.sport_id == old_sid].item(
+            )
+        except BaseException:
             chosen_name = 'N/A'
         # fetch most similar sports
         top = np.argpartition(sim_matrix[sid], -5)[-5:]
-        top_list = spt_id.sport_id[spt_id.spt_new_id.isin(top.tolist())].tolist()
-        top_names = sport_feat_df.sport_label[sport_feat_df.sport_id.isin(top_list)].unique()
-        sentence += 'For sport {}, top similar sports are {} \n'.format(chosen_name, top_names)
+        top_list = spt_id.sport_id[spt_id.spt_new_id.isin(
+            top.tolist())].tolist()
+        top_names = sport_feat_df.sport_label[sport_feat_df.sport_id.isin(
+            top_list)].unique()
+        sentence += 'For sport {}, top similar sports are {} \n'.format(
+            chosen_name, top_names)
     return sentence
 
 
@@ -189,13 +196,15 @@ def check_coverage(user_item_interaction,
 
     # remove all 'unknown' items
     known_items = item_feat_df.item_identifier.unique().tolist()
-    user_item_interaction = user_item_interaction[user_item_interaction.item_identifier.isin(known_items)]
+    user_item_interaction = user_item_interaction[user_item_interaction.item_identifier.isin(
+        known_items)]
 
     # count number of types in original dataset
     df = user_item_interaction.merge(item_feat_df,
                                      how='left',
-                                     on='ITEM IDENTIFIER')
-    df['is_generic'] = (df.is_junior + df.is_male + df.is_female).astype(bool) * -1 + 1
+                                     on='SPECIFIC ITEM IDENTIFIER')
+    df['is_generic'] = (df.is_junior + df.is_male +
+                        df.is_female).astype(bool) * -1 + 1
 
     coverage_metrics['generic_mean_whole'] = df.is_generic.mean()
     coverage_metrics['junior_mean_whole'] = df.is_junior.mean()
@@ -213,9 +222,10 @@ def check_coverage(user_item_interaction,
                             right_on='pdt_new_id')
     recs_df = recs_df.merge(item_feat_df,
                             how='left',
-                            on='ITEM IDENTIFIER')
+                            on='SPECIFIC ITEM IDENTIFIER')
 
-    recs_df['is_generic'] = (recs_df.is_junior + recs_df.is_male + recs_df.is_female).astype(bool) * -1 + 1
+    recs_df['is_generic'] = (
+        recs_df.is_junior + recs_df.is_male + recs_df.is_female).astype(bool) * -1 + 1
 
     coverage_metrics['generic_mean_recs'] = recs_df.is_generic.mean()
     coverage_metrics['junior_mean_recs'] = recs_df.is_junior.mean()

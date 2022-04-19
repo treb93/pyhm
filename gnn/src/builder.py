@@ -5,6 +5,7 @@ import dgl
 import numpy as np
 import pandas as pd
 import torch
+import sys
 
 from src.utils import read_data
 
@@ -199,8 +200,7 @@ def format_dfs(
 
 
 def create_ids(user_item_train: pd.DataFrame,
-               user_sport_interaction: pd.DataFrame,
-               sport_sportg_interaction: pd.DataFrame,
+               item_sport_interaction: pd.DataFrame,
                item_feat_df,
                item_id_type: str = 'SPECIFIC ITEM IDENTIFIER',
                ctm_id_type: str = 'CUSTOMER IDENTIFIER',
@@ -240,12 +240,7 @@ def create_ids(user_item_train: pd.DataFrame,
     pdt_id['pdt_new_id'] = pdt_id.index
 
     # Create sport ids
-    unique_sports = np.append(sport_sportg_interaction.sports_id.unique(),
-                              sport_sportg_interaction.sportsgroup_id.unique())
-    unique_sports = np.unique(
-        np.append(
-            unique_sports,
-            user_sport_interaction[spt_id_type].unique()))
+    unique_sports = item_sport_interaction[spt_id_type].unique()
     spt_id = pd.DataFrame(unique_sports, columns=[spt_id_type])
     spt_id['spt_new_id'] = spt_id.index
 
@@ -406,9 +401,6 @@ def df_to_adjacency_list(user_item_train: pd.DataFrame,
 
     adjacency_dict['sport_sportg_src'] = sport_sportg_interaction.spt_new_id_x.values
     adjacency_dict['sport_sportg_dst'] = sport_sportg_interaction.spt_new_id_y.values
-
-    print("Nombre de sport dans le tableau: ",
-          item_sport_interaction.spt_new_id.value_counts())
 
     return adjacency_dict, ground_truth_test, ground_truth_purchase_test, user_item_train
 

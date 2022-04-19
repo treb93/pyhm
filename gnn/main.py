@@ -289,7 +289,7 @@ def train(data, fixed_params, data_paths,
                         best_metrics['recall'] * 100,
                         best_metrics['coverage'] * 100))
 
-    log.info(sentence)
+    # log.info(sentence)
     save_txt(sentence, data_paths.result_filepath, mode='a')
 
     # Report performance on test set
@@ -330,7 +330,7 @@ def train(data, fixed_params, data_paths,
                         .format(precision * 100,
                                 recall * 100,
                                 coverage * 100))
-            log.info(sentence)
+            # log.info(sentence)
             save_txt(sentence, data_paths.result_filepath, mode='a')
 
     if check_embedding:
@@ -369,16 +369,16 @@ def train(data, fixed_params, data_paths,
 
             users, items = data.ground_truth_purchase_test
             ground_truth_purchase_dict = create_ground_truth(users, items)
-            explore_recs(recs,
-                         already_bought_dict,
-                         already_clicked_dict,
-                         ground_truth_dict,
-                         ground_truth_purchase_dict,
-                         data.item_feat_df,
-                         fixed_params.num_choices,
-                         data.pdt_id,
-                         fixed_params.item_id_type,
-                         data_paths.result_filepath)
+            # explore_recs(recs,
+            #              already_bought_dict,
+            #              already_clicked_dict,
+            #              ground_truth_dict,
+            #              ground_truth_purchase_dict,
+            #              data.item_feat_df,
+            #              fixed_params.num_choices,
+            #              data.pdt_id,
+            #              fixed_params.item_id_type,
+            #              data_paths.result_filepath)
 
             if fixed_params.item_id_type == 'SPECIFIC ITEM_IDENTIFIER':
                 coverage_metrics = check_coverage(data.user_item_train,
@@ -402,7 +402,7 @@ def train(data, fixed_params, data_paths,
                         coverage_metrics['female_mean_recs'] * 100,
                         coverage_metrics['eco_mean_recs'] * 100,
                     ))
-                log.info(sentence)
+                # log.info(sentence)
                 save_txt(sentence, data_paths.result_filepath, mode='a')
 
         save_outputs(
@@ -418,7 +418,7 @@ def train(data, fixed_params, data_paths,
 
         del params['remove']
         # Save model if the recall is greater than 8%
-        if (recall > 0.08) & (fixed_params.item_id_type == 'SPECIFIC ITEM_IDENTIFIER') or (
+        if (recall > 0.001) & (fixed_params.item_id_type == 'SPECIFIC ITEM_IDENTIFIER') or (
                 recall > 0.2) & (fixed_params.item_id_type == 'GENERAL ITEM_IDENTIFIER'):
             date = str(datetime.datetime.now())[:-10].replace(' ', '')
             torch.save(trained_model.state_dict(),
@@ -435,7 +435,7 @@ def train(data, fixed_params, data_paths,
         # Inference on different users
         if fixed_params.run_inference > 0:
             with torch.no_grad():
-                print('On normal params')
+                # print('On normal params')
                 inference_recall = inference_hp.inference_fn(
                     trained_model,
                     remove=fixed_params.remove_on_inference,
@@ -443,7 +443,7 @@ def train(data, fixed_params, data_paths,
                     overwrite_fixed_params=False,
                     **params)
                 if fixed_params.run_inference > 1:
-                    print('For all users')
+                    # print('For all users')
                     del params['days_of_purchases'], params['days_of_clicks'], params['lifespan_of_items']
                     all_users_inference_recall = inference_hp.inference_fn(
                         trained_model,
@@ -461,7 +461,7 @@ def train(data, fixed_params, data_paths,
         recap += f'\n3) On random users of {fixed_params.remove_on_inference} removed : {inference_recall * 100:.2f}'
     recap += f"\nLoop took {timedelta(seconds=elapsed)} for {len(viz['train_loss_list'])} epochs, an average of " \
              f"{timedelta(seconds=elapsed / len(viz['train_loss_list']))} per epoch"
-    print(recap)
+    # print(recap)
     save_txt(recap, data_paths.result_filepath, mode='a')
 
     return recall  # This is the 'test set' recall, on both purchases & clicks
@@ -566,6 +566,8 @@ def fitness(**params):
     is then multiplied by -1, since skopt is minimizing metrics.
     """
     recall = train(**{**fitness_params, **params})
+
+    print(f"Get a recall of {recall} with params: ", params)
     return -recall
 
 
@@ -655,7 +657,7 @@ def main(from_beginning, verbose, visualization, check_embedding,
             callback=[checkpoint_saver],
             random_state=46
         )
-    log.info(search_result)
+    # log.info(search_result)
 
 
 if __name__ == '__main__':

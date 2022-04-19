@@ -1,4 +1,6 @@
 from datetime import timedelta
+
+import datetime
 import time
 
 import dgl
@@ -203,13 +205,13 @@ def train_model(model,
                                    device=device,
                                    )
                 total_loss += val_loss.item()
-                # print(val_loss.item())
+                print(val_loss.item())
             val_avg_loss = total_loss / i
             model.val_loss_list.append(val_avg_loss)
 
         ############
         # METRICS PER EPOCH
-        if get_metrics and epoch % 10 == 1:
+        if get_metrics and epoch % 20 == 1:
             model.eval()
             with torch.no_grad():
                 # training metrics
@@ -287,6 +289,11 @@ def train_model(model,
                         'precision': val_precision,
                         'coverage': val_coverage}
 
+            print("Save model.")
+            date = str(datetime.datetime.now())[:-10].replace(' ', '')
+            torch.save(
+                model.state_dict(),
+                f'models/FULL_Recall_{val_recall * 100:.2f}_{date}.pth')
         else:
             sentence = "Epoch {:05d} | Training Loss {:.5f} | Validation Loss {:.5f} | ".format(
                 epoch, train_avg_loss, val_avg_loss)
@@ -299,6 +306,7 @@ def train_model(model,
         else:
             patience_counter += 1
         if patience_counter == patience:
+            print("Lost patience.")
             break
 
         elapsed = time.time() - start_time
@@ -334,6 +342,8 @@ def get_embeddings(g,
     and only have relevant nodes in the computational blocks. Whereas Edgeloader is preferable for training, because
     we generate negative edges also.
     """
+    print("Get embeddings.")
+
     if cuda:  # model is already on device?
         trained_model = trained_model.to(device)
     i2 = 0
@@ -344,10 +354,10 @@ def get_embeddings(g,
              for ntype in g.ntypes}
     for input_nodes, output_nodes, blocks in nodeloader_test:
         i2 += 1
-        if i2 % 10 == 0:
-            print(
-                "Computing embeddings: Batch {} out of {}".format(
-                    i2, num_batches_valid))
+        # if i2 % 10 == 0:
+        #     print(
+        #         "Computing embeddings: Batch {} out of {}".format(
+        #     i2, num_batches_valid))
         if cuda:
             blocks = [b.to(device) for b in blocks]
         input_features = blocks[0].srcdata['features']

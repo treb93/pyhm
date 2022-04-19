@@ -7,7 +7,7 @@ import torch
 from dgl.data.utils import save_graphs
 
 from src.builder import create_graph
-from src.utils_data import DataLoader, assign_graph_features
+from src.utils_data import DataLoader, FixedParameters, assign_graph_features
 from src.utils import read_data, save_txt, save_outputs
 from src.model import ConvModel, max_margin_loss
 from src.sampling import train_valid_split, generate_dataloaders
@@ -29,15 +29,15 @@ num_workers = 4 if cuda else 0
 
 class TrainDataPaths:
     def __init__(self):
-        self.result_filepath = 'TXT FILE WHERE TO LOG THE RESULTS .txt'
-        self.sport_feat_path = 'FEATURE DATASET, SPORTS (sport names) .csv'
-        self.full_interaction_path = 'INTERACTION LIST, USER-ITEM (Full dataset, not splitted between train & test).csv'
-        self.item_sport_path = 'INTERACTION LIST, ITEM-SPORT .csv'
-        self.user_sport_path = 'INTERACTION LIST, USER-SPORT .csv'
-        self.sport_sportg_path = 'INTERACTION LIST, SPORT-SPORT .csv'
-        self.item_feat_path = 'FEATURE DATASET, ITEMS .csv'
-        self.user_feat_path = 'FEATURE DATASET, USERS.csv'
-        self.sport_onehot_path = 'FEATURE DATASET, SPORTS (one-hot vectors) .csv'
+        self.result_filepath = 'outputs/result_train.txt'
+        self.sport_feat_path = '../pickles/gnn_sports.pkl'
+        self.full_interaction_path = '../pickles/gnn_user_item_full.pkl'
+        self.item_sport_path = '../pickles/gnn_item_sport.pkl'
+        self.user_sport_path = '../pickles/gnn_user_sport.pkl'
+        self.sport_sportg_path = '../pickles/gnn_sport_groups.pkl'
+        self.item_feat_path = '../pickles/gnn_item_features.pkl'
+        self.user_feat_path = '../pickles/gnn_user_features.pkl'
+        self.sport_onehot_path = '../pickles/gnn_sports.pkl'
 
 
 def train_full_model(fixed_params_path,
@@ -71,12 +71,10 @@ def train_full_model(fixed_params_path,
         associate node ID with personal information such as CUSTOMER IDENTIFIER or ITEM IDENTIFIER). Thus, the graph and ID mapping are saved to
         folder 'models'.
     """
+
     # Load parameters
-    fixed_params = read_data(fixed_params_path)
-    class objectview(object):
-        def __init__(self, d):
-            self.__dict__ = d
-    fixed_params = objectview(fixed_params)
+    fixed_params = FixedParameters(
+        2000, 0, 2000, 2048, 0, 'SPECIFIC ITEM IDENTIFIER', "keep_all")
     fixed_params.remove = remove
     fixed_params.subtrain_size = 0.01
     fixed_params.valid_size = 0.01
@@ -92,7 +90,7 @@ def train_full_model(fixed_params_path,
                                       remove_unk=True,
                                       sort=True,
                                       test_size_days=1,
-                                      item_id_type='ITEM IDENTIFIER',
+                                      item_id_type='SPECIFIC ITEM IDENTIFIER',
                                       ctm_id_type='CUSTOMER IDENTIFIER', )
     train_data_paths.train_path = train_df
     train_data_paths.test_path = test_df
@@ -131,6 +129,11 @@ def train_full_model(fixed_params_path,
                       )
     if cuda:
         model = model.to(device)
+
+    model.load_state_dict(
+        torch.load(
+            "models/FULL_Recall_3.29_2022-04-1823:30.pth",
+            map_location=device))
 
     # Initialize dataloaders
     # get training and test ids
@@ -185,11 +188,14 @@ def train_full_model(fixed_params_path,
     for etype in train_eids_dict.keys():
         train_eids_len += len(train_eids_dict[etype])
         valid_eids_len += len(valid_eids_dict[etype])
-    num_batches_train = math.ceil(train_eids_len / fixed_params.edge_batch_size)
+    num_batches_train = math.ceil(
+        train_eids_len /
+        fixed_params.edge_batch_size)
     num_batches_subtrain = math.ceil(
         (len(subtrain_uids) + len(all_iids)) / fixed_params.node_batch_size
     )
-    num_batches_val_loss = math.ceil(valid_eids_len / fixed_params.edge_batch_size)
+    num_batches_val_loss = math.ceil(
+        valid_eids_len / fixed_params.edge_batch_size)
     num_batches_val_metrics = math.ceil(
         (len(valid_uids) + len(all_iids)) / fixed_params.node_batch_size
     )
@@ -201,7 +207,10 @@ def train_full_model(fixed_params_path,
     hp_sentence = params
     hp_sentence.update(vars(fixed_params))
     hp_sentence = f'{str(hp_sentence)[1: -1]} \n'
-    save_txt(f'\n \n START - Hyperparameters \n{hp_sentence}', train_data_paths.result_filepath, "a")
+    save_txt(
+        f'\n \n START - Hyperparameters \n{hp_sentence}',
+        train_data_paths.result_filepath,
+        "a")
     trained_model, viz, best_metrics = train_model(
         model,
         fixed_params.num_epochs,
@@ -268,7 +277,9 @@ def train_full_model(fixed_params_path,
                                     params['embedding_layer'],
                                     )
 
-        for ground_truth in [data.ground_truth_purchase_test, data.ground_truth_test]:
+        for ground_truth in [
+                data.ground_truth_purchase_test,
+                data.ground_truth_test]:
             precision, recall, coverage = get_metrics_at_k(
                 embeddings,
                 valid_graph,
@@ -303,17 +314,17 @@ def train_full_model(fixed_params_path,
                                               data.spt_id,
                                               fixed_params.num_choices)
 
-                save_txt(result_sport, train_data_paths.result_filepath, mode='a')
+                save_txt(
+                    result_sport,
+                    train_data_paths.result_filepath,
+                    mode='a')
 
-            already_bought_dict = create_already_bought(valid_graph,
-                                                        all_eids_dict[('user', 'buys', 'item')],
-                                                        )
+            already_bought_dict = create_already_bought(
+                valid_graph, all_eids_dict[('user', 'buys', 'item')], )
             already_clicked_dict = None
             if fixed_params.discern_clicks:
-                already_clicked_dict = create_already_bought(valid_graph,
-                                                             all_eids_dict[('user', 'clicks', 'item')],
-                                                             etype='clicks',
-                                                             )
+                already_clicked_dict = create_already_bought(
+                    valid_graph, all_eids_dict[('user', 'clicks', 'item')], etype='clicks', )
 
             users, items = data.ground_truth_test
             ground_truth_dict = create_ground_truth(users, items)
@@ -353,8 +364,7 @@ def train_full_model(fixed_params_path,
                     "COVERAGE \n|| All transactions : "
                     "Generic {:.1f}% | Junior {:.1f}% | Male {:.1f}% | Female {:.1f}% | Eco {:.1f}% "
                     "\n|| Recommendations : "
-                    "Generic {:.1f}% | Junior {:.1f}% | Male {:.1f}% | Female {:.1f} | Eco {:.1f}%%"
-                        .format(
+                    "Generic {:.1f}% | Junior {:.1f}% | Male {:.1f}% | Female {:.1f} | Eco {:.1f}%%" .format(
                         coverage_metrics['generic_mean_whole'] * 100,
                         coverage_metrics['junior_mean_whole'] * 100,
                         coverage_metrics['male_mean_whole'] * 100,
@@ -365,8 +375,7 @@ def train_full_model(fixed_params_path,
                         coverage_metrics['male_mean_recs'] * 100,
                         coverage_metrics['female_mean_recs'] * 100,
                         coverage_metrics['eco_mean_recs'] * 100,
-                    )
-                )
+                    ))
                 log.info(sentence)
                 save_txt(sentence, train_data_paths.result_filepath, mode='a')
 
@@ -383,7 +392,8 @@ def train_full_model(fixed_params_path,
 
     # Save model
     date = str(datetime.datetime.now())[:-10].replace(' ', '')
-    torch.save(trained_model.state_dict(), f'models/FULL_Recall_{recall * 100:.2f}_{date}.pth')
+    torch.save(trained_model.state_dict(),
+               f'models/FULL_Recall_{recall * 100:.2f}_{date}.pth')
     # Save all necessary params
     save_outputs(
         {
@@ -413,11 +423,40 @@ def train_full_model(fixed_params_path,
               help='Path where the optimal hyperparameters found in the hyperparametrization were saved.')
 @click.option('-viz', '--visualization', count=True, help='Visualize result')
 @click.option('--check_embedding', count=True, help='Explore embedding result')
-@click.option('--remove', default=.99, help='Percentage of users to remove from train set. Ideally,'
-                                            ' remove would be 0. However, higher "remove" accelerates training.')
-@click.option('--edge_batch_size', default=2048, help='Number of edges in a train / validation batch')
-def main(fixed_params_path, params_path, visualization, check_embedding, remove, edge_batch_size):
-    params = read_data(params_path)
+@click.option('--remove',
+              default=.99,
+              help='Percentage of users to remove from train set. Ideally,'
+              ' remove would be 0. However, higher "remove" accelerates training.')
+@click.option('--edge_batch_size', default=2048,
+              help='Number of edges in a train / validation batch')
+def main(
+        fixed_params_path,
+        params_path,
+        visualization,
+        check_embedding,
+        remove,
+        edge_batch_size):
+    #params = read_data(params_path)
+    params = {
+        'aggregator_hetero': 'mean',
+        'aggregator_type': 'mean',
+        'clicks_sample': 0.3,
+        'delta': 0.266,
+        'dropout': 0.01,
+        'hidden_dim': 256,
+        'out_dim': 128,
+        'embedding_layer': True,
+        'lr': 0.00017985194246308484,
+        'n_layers': 5,
+        'neg_sample_size': 2000,
+        'norm': True,
+        'use_popularity': True,
+        'weight_popularity': 0.5,
+        'days_popularity': 7,
+        'purchases_sample': 0.5,
+        'pred': 'cos',
+        'use_recency': True}
+
     params.pop('remove', None)
     params.pop('edge_batch_size', None)
     train_full_model(fixed_params_path=fixed_params_path,
@@ -426,6 +465,7 @@ def main(fixed_params_path, params_path, visualization, check_embedding, remove,
                      remove=remove,
                      edge_batch_size=edge_batch_size,
                      **params)
+
 
 if __name__ == '__main__':
     main()

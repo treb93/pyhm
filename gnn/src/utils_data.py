@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import torch
+import sys
 
 from src.builder import (create_ids, df_to_adjacency_list,
                          format_dfs, import_features)
@@ -10,8 +11,8 @@ class DataPaths:
     def __init__(self):
         self.result_filepath = 'outputs/results.txt'
         self.sport_feat_path = '../pickles/gnn_sports.pkl'
-        self.train_path = '../pickles/gnn_user_item.pkl'
-        self.test_path = '../pickles/gnn_user_item.pkl'
+        self.train_path = '../pickles/gnn_user_item_complete.pkl'
+        self.test_path = '../pickles/gnn_user_item_empty.pkl'
         self.item_sport_path = '../pickles/gnn_item_sport.pkl'
         self.user_sport_path = '../pickles/gnn_user_sport.pkl'
         self.sport_sportg_path = '../pickles/gnn_sport_groups.pkl'
@@ -69,7 +70,7 @@ class FixedParameters:
         self.ctm_id_type = 'CUSTOMER IDENTIFIER'
         self.days_of_purchases = 365  # Max is 710
         self.days_of_clicks = 30  # Max is 710
-        self.discern_clicks = True
+        self.discern_clicks = False
         self.duplicates = duplicates  # 'keep_last', 'keep_all', 'count_occurrence'
         self.edge_batch_size = edge_batch_size
         self.etype = [('user', 'buys', 'item')]
@@ -100,8 +101,8 @@ class FixedParameters:
         self.spt_id_type = 'sport_id'
         self.start_epoch = start_epoch
         self.subtrain_size = 0.05
-        self.train_on_clicks = True
-        self.valid_size = 0.05
+        self.train_on_clicks = False
+        self.valid_size = 0.1
         # self.dropout = .5  # HP
         # self.norm = False  # HP
         # self.use_popularity = False  # HP
@@ -176,8 +177,7 @@ class DataLoader:
 
         self.ctm_id, self.pdt_id, self.spt_id = create_ids(
             self.user_item_train,
-            self.user_sport_interaction,
-            self.sport_sportg_interaction,
+            self.item_sport_interaction,
             self.item_feat_df,
             item_id_type=fixed_params.item_id_type,
             ctm_id_type=fixed_params.ctm_id_type,
@@ -245,22 +245,6 @@ class DataLoader:
                                        'utilizes',
                                        'item'): list(zip(self.adjacency_dict['item_sport_dst'],
                                                          self.adjacency_dict['item_sport_src'])),
-                                      ('user',
-                                       'practices',
-                                       'sport'): list(zip(self.adjacency_dict['user_sport_src'],
-                                                          self.adjacency_dict['user_sport_dst'])),
-                                      ('sport',
-                                       'practiced-by',
-                                       'user'): list(zip(self.adjacency_dict['user_sport_dst'],
-                                                         self.adjacency_dict['user_sport_src'])),
-                                      ('sport',
-                                       'belongs-to',
-                                       'sport'): list(zip(self.adjacency_dict['sport_sportg_src'],
-                                                          self.adjacency_dict['sport_sportg_dst'])),
-                                      ('sport',
-                                       'includes',
-                                       'sport'): list(zip(self.adjacency_dict['sport_sportg_dst'],
-                                                          self.adjacency_dict['sport_sportg_src'])),
                                       })
 
 

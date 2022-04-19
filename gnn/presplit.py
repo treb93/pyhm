@@ -13,7 +13,7 @@ def presplit_data(item_feature_data,
                   remove_unk=True,
                   sort=True,
                   test_size_days=14,
-                  item_id_type='ITEM IDENTIFIER',
+                  item_id_type='SPECIFIC ITEM IDENTIFIER',
                   ctm_id_type='CUSTOMER IDENTIFIER'):
     """
     Split data into train and test set.
@@ -55,14 +55,16 @@ def presplit_data(item_feature_data,
 
     if remove_unk:
         known_items = item_feature_data[item_id_type].unique().tolist()
-        user_item_interaction_data = user_item_interaction_data[user_item_interaction_data[item_id_type].isin(known_items)]
+        user_item_interaction_data = user_item_interaction_data[user_item_interaction_data[item_id_type].isin(
+            known_items)]
 
     if sort:
-        user_item_interaction_data.sort_values(by=['hit_timestamp'],
+        user_item_interaction_data.sort_values(by=['hit_date'],
                                                axis=0,
                                                inplace=True)
         # Split into train & test sets
-        most_recent_date = datetime.strptime(max(user_item_interaction_data.hit_date), '%Y-%m-%d')
+        most_recent_date = datetime.strptime(
+            max(user_item_interaction_data.hit_date), '%Y-%m-%d')
         limit_date = datetime.strftime(
             (most_recent_date - timedelta(days=int(test_size_days))),
             format='%Y-%m-%d'
@@ -71,11 +73,17 @@ def presplit_data(item_feature_data,
         test_set = user_item_interaction_data[user_item_interaction_data['hit_date'] > limit_date]
 
     else:
-        most_recent_date = datetime.strptime(max(user_item_interaction_data.hit_date), '%Y-%m-%d')
-        oldest_date = datetime.strptime(min(user_item_interaction_data.hit_date), '%Y-%m-%d')
-        total_days = timedelta(days=(most_recent_date - oldest_date))  # To be tested
+        most_recent_date = datetime.strptime(
+            max(user_item_interaction_data.hit_date), '%Y-%m-%d')
+        oldest_date = datetime.strptime(
+            min(user_item_interaction_data.hit_date), '%Y-%m-%d')
+        total_days = timedelta(
+            days=(
+                most_recent_date -
+                oldest_date))  # To be tested
         test_size = test_size_days / total_days
-        test_set = user_item_interaction_data.sample(frac=test_size, random_state=200)
+        test_set = user_item_interaction_data.sample(
+            frac=test_size, random_state=200)
         train_set = user_item_interaction_data.drop(test_set.index)
 
     # Keep only users in train set

@@ -1,7 +1,9 @@
 import math
+from re import sub
 
 import click
 import dgl
+import pandas as pd
 import numpy as np
 import torch
 
@@ -16,6 +18,7 @@ from src.utils import read_data
 cuda = torch.cuda.is_available()
 device = torch.device('cuda') if cuda else torch.device('cpu')
 num_workers = 4 if cuda else 0
+
 
 def inference_ondemand(user_ids,  # List or 'all'
                        use_saved_graph: bool,
@@ -61,7 +64,7 @@ def inference_ondemand(user_ids,  # List or 'all'
 
     """
     # Load & preprocess data
-    ## Graph
+    # Graph
     if use_saved_graph:
         graph = read_graph(graph_path)
         ctm_id_df = read_data(ctm_id_path)
@@ -70,7 +73,8 @@ def inference_ondemand(user_ids,  # List or 'all'
         # Create graph
         data_paths = DataPaths()
         fixed_params = FixedParameters(num_epochs=0, start_epoch=0,  # Not used (only used in training)
-                                       patience=0, edge_batch_size=0,  # Not used (only used in training)
+                                       # Not used (only used in training)
+                                       patience=0, edge_batch_size=0,
                                        remove=remove, item_id_type=params['item_id_type'],
                                        duplicates=params['duplicates'])
         data = DataLoader(data_paths, fixed_params)
@@ -85,13 +89,13 @@ def inference_ondemand(user_ids,  # List or 'all'
                                       data,
                                       **params,
                                       )
-    ## Preprocess: fetch right user ids
+    # Preprocess: fetch right user ids
     if user_ids[0] == 'all':
         test_uids = np.arange(graph.num_nodes('user'))
     else:
         test_uids = fetch_uids(user_ids,
                                ctm_id_df)
-    ## Remove already bought
+    # Remove already bought
     if use_saved_already_bought:
         already_bought_dict = read_data(already_bought_path)
     else:
@@ -116,7 +120,10 @@ def inference_ondemand(user_ids,  # List or 'all'
         params['aggregator_hetero'],
         params['embedding_layer'],
     )
-    trained_model.load_state_dict(torch.load(trained_model_path, map_location=device))
+    trained_model.load_state_dict(
+        torch.load(
+            trained_model_path,
+            map_location=device))
     if cuda:
         trained_model = trained_model.to(device)
 
@@ -171,15 +178,22 @@ def inference_ondemand(user_ids,  # List or 'all'
                                           ctm_id_df,
                                           params['item_id_type'],
                                           params['ctm_id_type'])
-        print(processed_recs)
-        return processed_recs
 
+        submission = pd.read_csv('../sample_submission.csv')
+        submission = submission[['customer_id']]
+        submission = submission.merge(
+            processed_recs, how='left', on='customer_id')
+
+        submission.to_csv('../submission_gnn_first_iteration.csv', index=False)
+        return processed_recs
 
 
 @click.command()
 @click.option('--params_path', default='params.pkl',
               help='Path where the optimal hyperparameters found in the hyperparametrization were saved.')
-@click.option('--user_ids', multiple=True, default=['all'],
+@click.option('--user_ids',
+              multiple=True,
+              default=['all'],
               help="IDs of users for which to generate recommendations. Either list of user ids, or 'all'.")
 @click.option('--use_saved_graph', count=True,
               help='If true, will use graph that was saved on disk. Need to import ID mapping for users & items.')
@@ -195,18 +209,41 @@ def inference_ondemand(user_ids,  # List or 'all'
               help='Path where the mapping for items was save. Mandatory if use_saved_graph is True.')
 @click.option('--already_bought_path', default='already_bought.pkl',
               help='Path where the already bought dict was saved. Mandatory if use_saved_already_bought is True.')
-@click.option('--k', default=10,
+@click.option('--k', default=12,
               help='Number of recs to generate for each user.')
-@click.option('--remove', default=.99,
+@click.option('--remove', default=0.99,
               help='Percentage of users to remove from graph if used_saved_graph = True. If more than 0, user_ids might'
                    ' not be in the graph. However, higher "remove" allows for faster inference.')
 def main(params_path, user_ids, use_saved_graph, trained_model_path,
          use_saved_already_bought, graph_path, ctm_id_path, pdt_id_path,
          already_bought_path, k, remove):
-    params = read_data(params_path)
+    # params = read_data(params_path).
+    trained_model_path = "models/FULL_Recall_3.29_2022-04-1823:30.pth"
+    params = {
+        'aggregator_hetero': 'mean',
+        'aggregator_type': 'mean',
+        'clicks_sample': 0.3,
+        'delta': 0.266,
+        'dropout': 0.01,
+        'hidden_dim': 256,
+        'out_dim': 128,
+        'embedding_layer': True,
+        'lr': 0.00017985194246308484,
+        'n_layers': 5,
+        'neg_sample_size': 2000,
+        'norm': True,
+        'use_popularity': True,
+        'weight_popularity': 0.5,
+        'days_popularity': 7,
+        'purchases_sample': 0.5,
+        'pred': 'cos',
+        'use_recency': True,
+        'item_id_type': 'SPECIFIC ITEM IDENTIFIER',
+        'ctm_id_type': 'CUSTOMER IDENTIFIER',
+        'duplicates': True
+    }
     params.pop('k', None)
     params.pop('remove', None)
-
 
     inference_ondemand(user_ids=user_ids,  # List or 'all'
                        use_saved_graph=use_saved_graph,
@@ -224,5 +261,3 @@ def main(params_path, user_ids, use_saved_graph, trained_model_path,
 
 if __name__ == '__main__':
     main()
-
-
