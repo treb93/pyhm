@@ -27,7 +27,7 @@ class DataLoader:
             fixed_params.remove,
             fixed_params.ctm_id_type,
             fixed_params.item_id_type,
-            fixed_params.days_of_purchases,
+            fixed_params.weeks_of_purchases,
             fixed_params.days_of_clicks,
             fixed_params.lifespan_of_items,
             fixed_params.report_model_coverage,
@@ -48,7 +48,7 @@ class DataLoader:
                 0,  # remove 0
                 fixed_params.ctm_id_type,
                 fixed_params.item_id_type,
-                fixed_params.days_of_purchases,
+                fixed_params.weeks_of_purchases,
                 fixed_params.days_of_clicks,
                 fixed_params.lifespan_of_items,
                 fixed_params.report_model_coverage,

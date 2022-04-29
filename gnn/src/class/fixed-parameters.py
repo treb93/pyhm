@@ -1,4 +1,7 @@
 
+import torch
+
+
 class FixedParameters:
     def __init__(self, num_epochs, start_epoch, patience, edge_batch_size,
                  remove, item_id_type, duplicates):
@@ -9,7 +12,7 @@ class FixedParameters:
         ----------
         ctm_id_type :
             Identifier for the customers.
-        Days_of_purchases (Days_of_clicks) :
+        weeks_of_purchases (Days_of_clicks) :
             Number of days of purchases (clicks) that should be kept in the dataset.
             Intuition is that interactions of 12+ months ago might not be relevant. Max is 710 days
             Those that do not have any remaining interactions will be fed recommendations from another
@@ -46,7 +49,7 @@ class FixedParameters:
             be included
         """
         self.ctm_id_type = 'CUSTOMER IDENTIFIER'
-        self.days_of_purchases = 365  # Max is 710
+        self.weeks_of_purchases = 365  # Max is 710
         self.days_of_clicks = 30  # Max is 710
         self.discern_clicks = False
         self.duplicates = duplicates  # 'keep_last', 'keep_all', 'count_occurrence'
@@ -59,7 +62,6 @@ class FixedParameters:
         self.item_id_type = item_id_type
         self.k = 10
         self.lifespan_of_items = 180
-        self.neighbor_sampler = 'full'
         self.node_batch_size = 128
         self.num_choices = 10
         self.num_epochs = num_epochs

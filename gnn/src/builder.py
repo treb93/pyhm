@@ -23,7 +23,7 @@ def format_dfs(
         remove: float = 0.,
         ctm_id_type: str = 'CUSTOMER IDENTIFIER',
         item_id_type: str = 'SPECIFIC ITEM IDENTIFIER',
-        days_of_purchases: int = 710,
+        weeks_of_purchases: int = 710,
         days_of_clicks: int = 710,
         lifespan_of_items: int = 710,
         report_model_coverage: bool = False,
@@ -53,7 +53,7 @@ def format_dfs(
     item_id_type :
         Identifier for the items. Can be SPECIFIC ITEM IDENTIFIER (e.g. item SKU)
         or GENERAL ITEM IDENTIFIER (e.g. item family identifier)
-    days_of_purchases (Days_of_clicks) :
+    weeks_of_purchases (Days_of_clicks) :
             Number of days of purchases (clicks) that should be kept in the dataset.
             Intuition is that interactions of 12+ months ago might not be relevant. Max is 710 days
             Those that do not have any remaining interactions will be fed recommendations from another
@@ -98,11 +98,11 @@ def format_dfs(
             f'Type of {test_path} not recognized. Should be str or pd.DataFrame')
 
     # TODO: Put this in sub functions
-    if days_of_purchases < 710:
+    if weeks_of_purchases < 710:
         most_recent_date = datetime.strptime(
             max(user_item_train.hit_date), '%Y-%m-%d')
         limit_date = datetime.strftime(
-            (most_recent_date - timedelta(days=int(days_of_purchases))),
+            (most_recent_date - timedelta(days=int(weeks_of_purchases))),
             format='%Y-%m-%d'
         )
         user_item_train = user_item_train[(
@@ -119,7 +119,7 @@ def format_dfs(
         user_item_train = user_item_train[(
             user_item_train.hit_date >= limit_date) | (user_item_train.buy == 1)]
 
-    if lifespan_of_items < days_of_purchases:
+    if lifespan_of_items < weeks_of_purchases:
         most_recent_date = datetime.strptime(
             max(user_item_train.hit_date), '%Y-%m-%d')
         limit_date = datetime.strftime(
@@ -161,7 +161,7 @@ def format_dfs(
 
     # Item-sport interaction
     item_sport_interaction = read_data(item_sport_path)
-    if lifespan_of_items < days_of_purchases:
+    if lifespan_of_items < weeks_of_purchases:
         item_sport_interaction = item_sport_interaction[item_sport_interaction['SPECIFIC ITEM IDENTIFIER'].isin(
             item_list)]
 
@@ -404,14 +404,6 @@ def df_to_adjacency_list(user_item_train: pd.DataFrame,
 
     return adjacency_dict, ground_truth_test, ground_truth_purchase_test, user_item_train
 
-
-def create_graph(graph_schema,
-                 ) -> dgl.DGLHeteroGraph:
-    """
-    Create graph based on adjacency list.
-    """
-    g = dgl.heterograph(graph_schema)
-    return g
 
 
 def import_features(g: dgl.DGLHeteroGraph,

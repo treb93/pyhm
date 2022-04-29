@@ -12,13 +12,15 @@ from skopt.utils import use_named_args
 from skopt.callbacks import CheckpointSaver
 from skopt import load
 import torch
+from gnn.parameters import Parameters
+from gnn.src.generate_dataloaders import generate_dataloaders
+from gnn.src.train_valid_split import train_valid_split
 
 from src.builder import create_graph, import_features
 from src.model import ConvModel, max_margin_loss
-from src.sampling import train_valid_split, generate_dataloaders
 from src.metrics import (create_already_bought, create_ground_truth,
                          get_metrics_at_k, get_recs)
-from src.train.run import train_model, get_embeddings
+from src.train.run import train_loop, get_embeddings
 from src.evaluation import explore_recs, explore_sports, check_coverage
 from src.utils import save_txt, save_outputs, get_last_checkpoint
 from src.utils_data import DataLoader, FixedParameters, DataPaths, assign_graph_features
@@ -205,9 +207,6 @@ def train(data, fixed_params, data_paths,
         (len(test_uids) + len(all_iids)) / fixed_params.node_batch_size
     )
 
-    if fixed_params.neighbor_sampler == 'partial':
-        params['n_layers'] = 3
-
     model = ConvModel(valid_graph,
                       params['n_layers'],
                       dim_dict,
@@ -238,7 +237,7 @@ def train(data, fixed_params, data_paths,
     start_time = time.time()
 
     # Train model
-    trained_model, viz, best_metrics = train_model(
+    trained_model, viz, best_metrics = train_loop(
         model,
         fixed_params.num_epochs,
         num_batches_train,
@@ -444,13 +443,13 @@ def train(data, fixed_params, data_paths,
                     **params)
                 if fixed_params.run_inference > 1:
                     # print('For all users')
-                    del params['days_of_purchases'], params['days_of_clicks'], params['lifespan_of_items']
+                    del params['weeks_of_purchases'], params['days_of_clicks'], params['lifespan_of_items']
                     all_users_inference_recall = inference_hp.inference_fn(
                         trained_model,
                         remove=fixed_params.remove_on_inference,
                         fixed_params=fixed_params,
                         overwrite_fixed_params=True,
-                        days_of_purchases=710,
+                        weeks_of_purchases=710,
                         days_of_clicks=710,
                         lifespan_of_items=710,
                         **params)
@@ -600,15 +599,15 @@ def main(from_beginning, verbose, visualization, check_embedding,
     else:
         log.setLevel(logging.INFO)
 
-    data_paths = DataPaths()
-    fixed_params = FixedParameters(
-        num_epochs,
-        start_epoch,
-        patience,
-        edge_batch_size,
-        remove,
-        item_id_type,
-        duplicates)
+    parameters = Parameters()
+    parameters.update({
+        num_epochs: num_epochs,
+        start_epoch: start_epoch,
+        patience: patience,
+        edge_batch_size: edge_batch_size,
+        remove: remove,
+        duplicates: duplicates
+    })
 
     checkpoint_saver = CheckpointSaver(
         f'checkpoint{str(datetime.datetime.now())[:-10]}.pkl',
