@@ -7,7 +7,7 @@ class Parameters():
         self.duplicates = 'keep_all'  # 'keep_last', 'keep_all', 'count_occurrence'
         self.batch_size = 2048
         self.explore = True
-        self.k = 10
+        self.k = 12
         self.lifespan_of_items = 180
         self.num_choices = 10
         self.start_epoch = 0

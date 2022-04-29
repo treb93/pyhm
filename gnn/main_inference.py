@@ -12,7 +12,7 @@ from src.model import ConvModel
 from src.utils_data import DataPaths, DataLoader, FixedParameters, assign_graph_features
 from src.utils_inference import read_graph, fetch_uids, postprocess_recs
 from src.train.run import get_embeddings
-from src.metrics import get_recs, create_already_bought
+from src.metrics import get_recommandation_tensor, create_already_bought
 from src.utils import read_data
 
 cuda = torch.cuda.is_available()
@@ -148,29 +148,20 @@ def inference_ondemand(user_ids,  # List or 'all'
     # Fetch recs
     trained_model.eval()
     with torch.no_grad():
-        embeddings = get_embeddings(graph,
-                                    params['out_dim'],
-                                    trained_model,
-                                    nodeloader_test,
-                                    num_batches_test,
-                                    cuda,
-                                    device,
-                                    params['embedding_layer'],
-                                    )
-        recs = get_recs(graph,
-                        embeddings,
-                        trained_model,
-                        params['out_dim'],
-                        k,
-                        test_uids,
-                        already_bought_dict,
-                        remove_already_bought=True,
-                        cuda=cuda,
-                        device=device,
-                        pred=params['pred'],
-                        use_popularity=params['use_popularity'],
-                        weight_popularity=params['weight_popularity']
-                        )
+        embeddings, node_ids = get_embeddings(graph,
+                                              params['out_dim'],
+                                              trained_model,
+                                              nodeloader_test,
+                                              num_batches_test,
+                                              cuda,
+                                              device,
+                                              params['embedding_layer'],
+                                              )
+        recs = get_recommandation_tensor(
+            embeddings,
+            node_ids,
+            trained_model,
+            parameters)
 
         # Postprocess: user & item ids
         processed_recs = postprocess_recs(recs,

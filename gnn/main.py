@@ -19,7 +19,7 @@ from gnn.src.train_valid_split import train_valid_split
 from src.builder import create_graph, import_features
 from src.model import ConvModel, max_margin_loss
 from src.metrics import (create_already_bought, create_ground_truth,
-                         get_metrics_at_k, get_recs)
+                         get_metrics_at_k, get_recommandation_tensor)
 from src.train.run import train_loop, get_embeddings
 from src.evaluation import explore_recs, explore_sports, check_coverage
 from src.utils import save_txt, save_outputs, get_last_checkpoint
@@ -295,20 +295,20 @@ def train(data, fixed_params, data_paths,
     log.debug('Test metrics start ...')
     trained_model.eval()
     with torch.no_grad():
-        embeddings = get_embeddings(valid_graph,
-                                    params['out_dim'],
-                                    trained_model,
-                                    nodeloader_test,
-                                    num_batches_test,
-                                    cuda,
-                                    device,
-                                    params['embedding_layer'],
-                                    )
+        embeddings, node_ids = get_embeddings(valid_graph,
+                                              params['out_dim'],
+                                              trained_model,
+                                              nodeloader_test,
+                                              num_batches_test,
+                                              cuda,
+                                              device,
+                                              params['embedding_layer'],
+                                              )
 
         for ground_truth in [
                 data.ground_truth_purchase_test,
                 data.ground_truth_test]:
-            precision, recall, coverage = get_metrics_at_k(
+            precision = get_metrics_at_k(
                 embeddings,
                 valid_graph,
                 trained_model,
@@ -354,17 +354,11 @@ def train(data, fixed_params, data_paths,
             users, items = data.ground_truth_test
             ground_truth_dict = create_ground_truth(users, items)
             user_ids = np.unique(users).tolist()
-            recs = get_recs(valid_graph,
-                            embeddings,
-                            trained_model,
-                            params['out_dim'],
-                            fixed_params.k,
-                            user_ids,
-                            already_bought_dict,
-                            remove_already_bought=True,
-                            pred=fixed_params.pred,
-                            use_popularity=params['use_popularity'],
-                            weight_popularity=params['weight_popularity'])
+            recs = get_recommandation_tensor(
+                embeddings,
+                node_ids,
+                trained_model,
+                parameters)
 
             users, items = data.ground_truth_purchase_test
             ground_truth_purchase_dict = create_ground_truth(users, items)

@@ -1,9 +1,14 @@
+from gnn.parameters import Parameters
+from gnn.src.classes.dataset import Dataset
+from gnn.src.model import ConvModel
 from src.utils import softmax
 from collections import defaultdict
 
+import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
+from dgl import DGLHeteroGraph
 
 
 def create_ground_truth(users, items):
@@ -17,7 +22,7 @@ def create_ground_truth(users, items):
     return ground_truth_dict
 
 
-def create_already_bought(g, bought_eids, etype='buys'):
+def create_already_bought(g: DGLHeteroGraph, bought_eids, etype='buys'):
     """
     Creates a dictionary, where the keys are user ids and the values are item ids that the user already bought.
     """
@@ -30,136 +35,110 @@ def create_already_bought(g, bought_eids, etype='buys'):
     return already_bought_dict
 
 
-def get_recs(g,
-             h,
-             model,
-             embed_dim,
-             k,
-             user_ids,
-             already_bought_dict,
-             remove_already_bought=True,
-             cuda=False,
-             device=None,
-             pred: str = 'cos',
-             use_popularity: bool = False,
-             weight_popularity=1
-             ):
+def get_recommandation_tensor(y,
+                              node_ids,
+                              model: ConvModel,
+                              parameters: Parameters
+                              ) -> torch.tensor():
     """
-    Computes K recommendation for all users, given hidden states, the model and what they already bought.
+    Computes K recommendations for all users, given hidden states.
+
+    returns recommandations(torch.tensor): A tensor of shape (customers, parameters.k)
     """
-    if cuda:  # model is already in cuda?
-        model = model.to(device)
     print(
-        'Computing recommendations on {} users, for {} items'.format(
-            len(user_ids),
-            g.num_nodes('item')))
-    recs = {}
-    i = 0
-    for user in user_ids:
-        i = i + 1
-        print(f"User n°{i}")
-        user_emb = h['user'][user]
-        already_bought = already_bought_dict[user]
-        user_emb_rpt = torch.cat(g.num_nodes(
-            'item') * [user_emb]).reshape(-1, embed_dim)
+        f"Computing recommendations on {len(node_ids['customer'])} users, for {len(node_ids['article'])} items")
 
-        if pred == 'cos':
-            cos = nn.CosineSimilarity(dim=1, eps=1e-6)
-            ratings = cos(user_emb_rpt, h['item'])
+    if parameters.prediction_layer == 'cos':
 
-        elif pred == 'nn':
-            cat_embed = torch.cat((user_emb_rpt, h['item']), 1)
+        cos = nn.CosineSimilarity(dim=1, eps=1e-6)
+        similarities = cos(
+            y['customer'].reshape(-1, parameters.embed_dim, 1),
+            y['item'].reshape(1, parameters.embed_dim, -1)
+        )
+
+        # Get the indexes of the best score
+        recommandations = torch.argsort(
+            similarities, dim=1, descending=True)[0:12]
+
+        # Replace the indexes by real article ids.
+        recommandations = node_ids['article'][recommandations[:]]
+
+    elif parameters.prediction_layer == 'nn':
+        # TODO: Cette boucle coûte très cher. Voir si on peut les faire tous
+        # d'un coup
+        for user_id in node_ids['customer']:
+            counter = counter + 1
+            print(f"Customer n°{counter}")
+            user_emb = y['user'][user_id]
+
+            user_emb_rpt = torch.cat(
+                len(node_ids['article']) * [user_emb]).reshape(-1, parameters.embed_dim)
+
+            cat_embed = torch.cat((user_emb_rpt, y['item']), 1)
             ratings = model.pred_fn.layer_nn(cat_embed)
 
-        else:
-            raise KeyError(f'Prediction function {pred} not recognized.')
+            ratings_formatted = ratings.cpu().detach(
+            ).numpy().reshape(len(node_ids['article']),)
 
-        ratings_formatted = ratings.cpu().detach().numpy().reshape(g.num_nodes('item'),)
-        if use_popularity:
-            softmax_ratings = softmax(ratings_formatted)
-            popularity_scores = g.ndata['popularity']['item'].numpy().reshape(
-                g.num_nodes('item'),)
-            ratings_formatted = np.add(
-                softmax_ratings,
-                popularity_scores *
-                weight_popularity)
-        order = np.argsort(-ratings_formatted)
-        if remove_already_bought:
-            order = [item for item in order if item not in already_bought]
-        rec = order[:k]
-        recs[user] = rec
-    return recs
+            order = node_ids['customer'][np.argsort(-ratings_formatted)]
+
+            rec = order[:parameters.k]
+            recommandations[user_id] = rec
+    else:
+        raise KeyError(
+            f'Prediction function {parameters.prediction_layer} not recognized.')
+
+    return recommandations
 
 
-def recs_to_metrics(recs, ground_truth_dict, g):
+def precision_at_k(recommendations: torch.tensor, node_ids, dataset: Dataset):
     """
-    Given the recommendations and the ground_truth, computes precision, recall & coverage.
+    Given the recommendations and the purchase list, computes precision, recall & coverage.
     """
-    # precision
-    k_relevant = 0
-    k_total = 0
-    for uid, iids in recs.items():
-        k_total += len(iids)
-        k_relevant += len([id_ for id_ in iids if id_ in ground_truth_dict[uid]])
-    precision = k_relevant / k_total
 
-    # recall
-    k_relevant = 0
-    k_total = 0
-    for uid, iids in recs.items():
-        k_total += len(ground_truth_dict[uid])
-        k_relevant += len([id_ for id_ in ground_truth_dict[uid]
-                          if id_ in iids])
-    recall = k_relevant / k_total
+    # Builds a dataset for having both purchase list and prediction list aside.
+    score_dataframe = pd.concat([
+        pd.Series(node_ids).rename('node_ids'),
+        pd.Series(recommendations.tolist()).rename('prediction')
+    ], axis=1)
 
-    # coverage
-    nb_total = g.num_nodes('item')
-    recs_flatten = [
-        item for sublist in list(
-            recs.values()) for item in sublist]
-    nb_recommended = len(set(recs_flatten))
-    coverage = nb_recommended / nb_total
+    score_dataframe = score_dataframe.merge(
+        dataset.purchased_list, on='customer_nid', how='left')
 
-    return precision, recall, coverage
+    precision = score_dataframe.apply(
+        lambda x: np.sum(
+            np.fromiter((
+                np.where(
+                    article_nid in x['articles'],
+                    1,
+                    0
+                ) for article_nid in min(len(x['prediction'], x['length']))
+            ), float
+            )
+        ) / min(len(x['prediction']), x['length']), axis=1)
+
+    return precision
 
 
-def get_metrics_at_k(h,
-                     g,
-                     model,
-                     embed_dim,
-                     ground_truth,
-                     bought_eids,
-                     k,
-                     remove_already_bought=True,
-                     cuda=False,
-                     device=None,
-                     pred='cos',
-                     use_popularity=False,
-                     weight_popularity=1):
+def get_metrics_at_k(model: ConvModel,
+                     y,
+                     node_ids,
+                     dataset: Dataset,
+                     parameters: Parameters
+                     ):
     """
     Function combining all previous functions: create already_bought & ground_truth dict, get recs and compute metrics.
     """
-    already_bought_dict = create_already_bought(g, bought_eids)
-    users, items = ground_truth
-    user_ids = np.unique(users).tolist()
-    ground_truth_dict = create_ground_truth(users, items)
-    recs = get_recs(
-        g,
-        h,
+    recommendations = get_recommandation_tensor(
+        y,
+        node_ids,
         model,
-        embed_dim,
-        k,
-        user_ids,
-        already_bought_dict,
-        remove_already_bought,
-        cuda,
-        device,
-        pred,
-        use_popularity,
-        weight_popularity)
-    precision, recall, coverage = recs_to_metrics(recs, ground_truth_dict, g)
+        parameters)
 
-    return precision, recall, coverage
+    precision = precision_at_k(
+        recommendations, node_ids, dataset)
+
+    return precision
 
 
 def MRR_neg_edges(model,

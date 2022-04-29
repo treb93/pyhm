@@ -5,26 +5,22 @@ import time
 
 import dgl
 import torch
+from gnn.src.classes.dataloaders import DataLoaders
+from gnn.src.classes.dataset import Dataset
+from gnn.src.get_embeddings import get_embeddings
 
 from src.metrics import get_metrics_at_k
 from src.utils import save_txt
 
 
 def train_loop(model,
-               num_batches_train,
-               num_batches_val_loss,
-               dataloader_train,
-               edgeloader_valid,
+               dataset: Dataset,
+               dataloaders: DataLoaders,
                loss_fn,
                parameters,
                environment,
                get_metrics=False,
-               train_graph=None,
-               valid_graph=None,
-               nodeloader_valid=None,
-               nodeloader_subtrain=None,
-               num_batches_val_metrics=None,
-               num_batches_subtrain=None,
+               graph=None,
                bought_eids=None,
                ground_truth_subtrain=None,
                ground_truth_valid=None,
@@ -72,11 +68,8 @@ def train_loop(model,
         model.train()  # Because if not, after eval, dropout would be still be inactive
         i = 0
         total_loss = 0
-        for _, pos_g, neg_g, blocks in dataloader_train:
+        for _, pos_g, neg_g, blocks in dataloaders.dataloader_train_loss:
             opt.zero_grad()
-
-            # Negative mask
-            negative_mask = {}
 
             if environment.cuda:
                 blocks = [b.to(environment.device) for b in blocks]
@@ -85,7 +78,8 @@ def train_loop(model,
 
             i += 1
             if i % 10 == 0:
-                print("Edge batch {} out of {}".format(i, num_batches_train))
+                print(f"Edge batch {i} out of {dataloaders.num_batches_train}")
+
             input_features = blocks[0].srcdata['features']
             # recency (TO BE CLEANED)
             recency_scores = None
@@ -120,12 +114,12 @@ def train_loop(model,
         with torch.no_grad():
             total_loss = 0
             i = 0
-            for _, pos_g, neg_g, blocks in edgeloader_valid:
+
+            for _, pos_g, neg_g, blocks in dataloaders.dataloader_valid_loss:
                 i += 1
                 if i % 10 == 0:
                     print(
-                        "Edge batch {} out of {}".format(
-                            i, num_batches_val_loss))
+                        f"Edge batch {i} out of {dataloaders.num_batches_valid}")
 
                 if environment.cuda:
                     blocks = [b.to(environment.device) for b in blocks]
@@ -147,6 +141,7 @@ def train_loop(model,
                                    )
                 total_loss += val_loss.item()
                 print(val_loss.item())
+
             val_avg_loss = total_loss / i
             model.val_loss_list.append(val_avg_loss)
 
@@ -157,103 +152,78 @@ def train_loop(model,
             with torch.no_grad():
                 # training metrics
                 print('TRAINING METRICS')
-                y = get_embeddings(train_graph,
-                                   parameters.out_dim,
-                                   model,
-                                   nodeloader_subtrain,
-                                   num_batches_subtrain,
-                                   cuda,
-                                   device,
-                                   parameters.embedding_layer,
-                                   )
+                # TODO: Sortir les batches de la fonction sans quoi ça va
+                # coincer.
+                y, node_ids = get_embeddings(graph,
+                                             model,
+                                             dataloaders,
+                                             parameters=parameters,
+                                             environment=environment
+                                             )
 
-                train_precision, train_recall, train_coverage = get_metrics_at_k(y,
-                                                                                 train_graph,
-                                                                                 model,
-                                                                                 out_dim,
-                                                                                 ground_truth_subtrain,
-                                                                                 bought_eids,
-                                                                                 k,
-                                                                                 False,  # Remove already bought
-                                                                                 cuda,
-                                                                                 device,
-                                                                                 pred,
-                                                                                 use_popularity,
-                                                                                 weight_popularity)
+                train_precision_at_k = get_metrics_at_k(
+                    y,
+                    graph,
+                    model,
+                    node_ids,
+                    ground_truth_subtrain,
+                    parameters=parameters,
+                    environment=environment)
 
                 # validation metrics
                 print('VALIDATION METRICS')
-                y = get_embeddings(valid_graph,
-                                   out_dim,
-                                   model,
-                                   nodeloader_valid,
-                                   num_batches_val_metrics,
-                                   cuda,
-                                   device,
-                                   embedding_layer,
-                                   )
+                y, node_ids = get_embeddings(graph,
+                                             model,
+                                             dataloaders.dataloader_valid_metrics,
+                                             environment=environment,
+                                             parameters=parameters
+                                             )
 
-                val_precision, val_recall, val_coverage = get_metrics_at_k(y,
-                                                                           valid_graph,
-                                                                           model,
-                                                                           out_dim,
-                                                                           ground_truth_valid,
-                                                                           bought_eids,
-                                                                           k,
-                                                                           remove_already_bought,
-                                                                           cuda,
-                                                                           device,
-                                                                           pred,
-                                                                           use_popularity,
-                                                                           weight_popularity
-                                                                           )
-                sentence = '''Epoch {:05d} || TRAINING Loss {:.5f} | Precision {:.3f}% | Recall {:.3f}% | Coverage {:.2f}%
-                || VALIDATION Loss {:.5f} | Precision {:.3f}% | Recall {:.3f}% | Coverage {:.2f}% '''.format(
-                    epoch, train_avg_loss, train_precision * 100, train_recall * 100, train_coverage * 100,
-                    val_avg_loss, val_precision * 100, val_recall * 100, val_coverage * 100)
+                val_precision_at_k = get_metrics_at_k(
+                    model,
+                    y,
+                    node_ids,
+                    dataset,
+                    parameters
+                )
+                sentence = f"""Epoch {epoch: 05d} || TRAINING Loss {train_avg_loss: .5f} | Precision at k {train_precision_at_k * 100: .3f}%
+                || VALIDATION Loss {val_avg_loss: .5f} | Precision {val_precision_at_k * 100: .3f}% """
                 print(sentence)
-                save_txt(sentence, result_filepath, mode='a')
+                save_txt(sentence, environment.result_filepath, mode='a')
 
-                model.train_precision_list.append(train_precision * 100)
-                model.train_recall_list.append(train_recall * 100)
-                model.train_coverage_list.append(train_coverage * 10)
-                model.val_precision_list.append(val_precision * 100)
-                model.val_recall_list.append(val_recall * 100)
-                model.val_coverage_list.append(
-                    val_coverage * 10)  # just *10 for viz purposes
+                model.train_precision_list.append(train_precision_at_k * 100)
+                model.val_precision_list.append(val_precision_at_k * 100)
 
                 # Visualization of best metric
-                if val_recall > max_metric:
-                    max_metric = val_recall
+                if val_precision_at_k > max_metric:
+                    max_metric = val_precision_at_k
                     best_metrics = {
-                        'recall': val_recall,
-                        'precision': val_precision,
-                        'coverage': val_coverage}
+                        'precision': val_precision_at_k,
+                    }
 
             print("Save model.")
             date = str(datetime.datetime.now())[:-10].replace(' ', '')
             torch.save(
                 model.state_dict(),
-                f'models/FULL_Recall_{val_recall * 100:.2f}_{date}.pth')
+                f'models/FULL_Precision_{val_precision_at_k * 100:.2f}_{date}.pth')
         else:
-            sentence = "Epoch {:05d} | Training Loss {:.5f} | Validation Loss {:.5f} | ".format(
-                epoch, train_avg_loss, val_avg_loss)
+            sentence = "Epoch {epoch:05d} | Training Loss {train_avg_loss:.5f} | Validation Loss {val_avg_loss:.5f} | "
             print(sentence)
-            save_txt(sentence, result_filepath, mode='a')
+            save_txt(sentence, environment.result_filepath, mode='a')
 
         if val_avg_loss < min_loss:
             min_loss = val_avg_loss
             patience_counter = 0
         else:
             patience_counter += 1
-        if patience_counter == patience:
+        if patience_counter == parameters.patience:
             print("Lost patience.")
             break
 
         elapsed = time.time() - start_time
         result_to_save = f'Epoch took {timedelta(seconds=elapsed)} \n'
         print(result_to_save)
-        save_txt(result_to_save, result_filepath, mode='a')
+        save_txt(result_to_save, environment.result_filepath, mode='a')
 
     viz = {'train_loss_list': model.train_loss_list,
            'train_precision_list': model.train_precision_list,
@@ -266,55 +236,3 @@ def train_loop(model,
 
     print('Training completed.')
     return model, viz, best_metrics  # model will already be to 'cuda' device?
-
-
-def get_embeddings(g,
-                   out_dim: int,
-                   trained_model,
-                   nodeloader_test,
-                   num_batches_valid: int,
-                   cuda: bool = False,
-                   device=None,
-                   embedding_layer: bool = True):
-    """
-    Fetch the embeddings for all the nodes in the nodeloader.
-
-    Nodeloader is preferable when computing embeddings because we can specify which nodes to compute the embedding for,
-    and only have relevant nodes in the computational blocks. Whereas Edgeloader is preferable for training, because
-    we generate negative edges also.
-    """
-    print("Get embeddings.")
-
-    if cuda:  # model is already on device?
-        trained_model = trained_model.to(device)
-    i2 = 0
-    y = {ntype: torch.zeros(g.num_nodes(ntype), out_dim)
-         for ntype in g.ntypes}
-    if cuda:  # not sure if I need to put the 'result' tensor to device
-        y = {ntype: torch.zeros(g.num_nodes(ntype), out_dim).to(device)
-             for ntype in g.ntypes}
-    for input_nodes, output_nodes, blocks in nodeloader_test:
-        i2 += 1
-        # if i2 % 10 == 0:
-        #     print(
-        #         "Computing embeddings: Batch {} out of {}".format(
-        #     i2, num_batches_valid))
-        if cuda:
-            blocks = [b.to(device) for b in blocks]
-        input_features = blocks[0].srcdata['features']
-        if embedding_layer:
-            input_features['user'] = trained_model.user_embed(
-                input_features['user'])
-            input_features['item'] = trained_model.item_embed(
-                input_features['item'])
-            if 'sport' in input_features.keys():
-                input_features['sport'] = trained_model.sport_embed(
-                    input_features['sport'])
-        h = trained_model.get_repr(blocks, input_features)
-        for ntype in h.keys():
-            # TODO: Resolve this
-            if ntype not in output_nodes.keys():
-                print(f"WARNING no output node {ntype}")
-                continue
-            y[ntype][output_nodes[ntype]] = h[ntype]
-    return y

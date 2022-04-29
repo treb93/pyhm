@@ -7,18 +7,18 @@ import torch
 from dgl.data.utils import save_graphs
 from gnn.environment import Environment
 from gnn.parameters import Parameters
-from gnn.src.generate_dataloaders import generate_dataloaders
+from gnn.src.classes.dataloaders import DataLoaders
+from gnn.src.classes.dataset import Dataset
+from gnn.src.create_graph import create_graph
 from gnn.src.max_margin_loss import max_margin_loss
-from gnn.src.prepare_dataset import prepare_dataset
 from gnn.src.train_loop import train_loop
 
-from src.builder import create_graph
 from src.utils_data import assign_graph_features
 from src.utils import read_data, save_txt, save_outputs
 from src.model import ConvModel
 from src.utils_vizualization import plot_train_loss
 from src.metrics import (create_already_bought, create_ground_truth,
-                         get_metrics_at_k, get_recs)
+                         get_metrics_at_k, get_recommandation_tensor)
 from src.evaluation import explore_recs, explore_sports, check_coverage
 from presplit import presplit_data
 
@@ -63,16 +63,12 @@ def launch_training(
     """
 
     # Create full train set
-    old_purchases, purchases_to_predict, customers, articles = prepare_dataset(
+    dataset = Dataset(
         environment, parameters
     )
 
     # Initialize graph & features
-    graph = create_graph(
-        old_purchases,
-        purchases_to_predict,
-        customers,
-        articles)
+    graph = create_graph(dataset)
 
     dim_dict = {'user': graph.nodes['user'].data['features'].shape[1],
                 'item': graph.nodes['item'].data['features'].shape[1],
@@ -126,32 +122,10 @@ def launch_training(
     #    parameters['purchases_sample'],
     # )
 
-    (
-        dataloader_train,
-        dataloader_valid,
-        dataloader_test
-    ) = generate_dataloaders(graph,
-                             purchases_to_predict,
-                             parameters
-                             )
-
-    train_edges_length = len(
-        purchases_to_predict[purchases_to_predict['set'] == 0])
-    valid_edges_length = len(
-        purchases_to_predict[purchases_to_predict['set'] == 1])
-    test_edges_length = len(
-        purchases_to_predict[purchases_to_predict['set'] == 2])
-
-    num_batches_train = math.ceil(
-        train_edges_length /
-        parameters.batch_size)
-
-    num_batches_valid = math.ceil(
-        valid_edges_length / parameters.batch_size)
-
-    num_batches_test = math.ceil(
-        test_edges_length / parameters.node_batch_size
-    )
+    dataloaders = DataLoaders(graph,
+                              dataset,
+                              parameters
+                              )
 
     # Run model
     hyperparameters_text = f'{str(parameters)} \n'
@@ -164,21 +138,12 @@ def launch_training(
     trained_model, viz, best_metrics = train_loop(
         model,
         graph,
-        num_batches_train,
-        num_batches_valid,
-        dataloader_train,
-        dataloader_valid,
+        dataset,
+        dataloaders,
         max_margin_loss,
-        cuda,
-        device,
+        get_metrics=True,
         parameters=parameters,
         environment=environment,
-
-        get_metrics=True,
-        bought_eids=train_eids_dict[('user', 'buys', 'item')],
-        ground_truth_subtrain=ground_truth_subtrain,
-        ground_truth_valid=ground_truth_valid,
-        remove_already_bought=True,
     )
 
     # Get viz & metrics
@@ -199,20 +164,20 @@ def launch_training(
     log.debug('Test metrics start ...')
     trained_model.eval()
     with torch.no_grad():
-        embeddings = get_embeddings(graph,
-                                    parameters['out_dim'],
-                                    trained_model,
-                                    nodeloader_test,
-                                    num_batches_test,
-                                    cuda,
-                                    device,
-                                    parameters['embedding_layer'],
-                                    )
+        embeddings, node_ids = get_embeddings(graph,
+                                              parameters['out_dim'],
+                                              trained_model,
+                                              nodeloader_test,
+                                              num_batches_test,
+                                              cuda,
+                                              device,
+                                              parameters['embedding_layer'],
+                                              )
 
         for ground_truth in [
                 data.ground_truth_purchase_test,
                 data.ground_truth_test]:
-            precision, recall, coverage = get_metrics_at_k(
+            precision = get_metrics_at_k(
                 embeddings,
                 graph,
                 trained_model,
@@ -261,17 +226,13 @@ def launch_training(
             users, items = data.ground_truth_test
             ground_truth_dict = create_ground_truth(users, items)
             user_ids = np.unique(users).tolist()
-            recs = get_recs(graph,
-                            embeddings,
-                            trained_model,
-                            parameters['out_dim'],
-                            parameters.k,
-                            user_ids,
-                            already_bought_dict,
-                            remove_already_bought=True,
-                            pred=parameters['pred'],
-                            use_popularity=parameters['use_popularity'],
-                            weight_popularity=parameters['weight_popularity'])
+
+            recs = get_recommandation_tensor(
+                embeddings,
+                node_ids,
+                trained_model,
+                parameters
+            )
 
             users, items = data.ground_truth_purchase_test
             ground_truth_purchase_dict = create_ground_truth(users, items)

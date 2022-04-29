@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 import torch as th
 
+from gnn.src.classes.dataset import Dataset
 
-def create_graph(purchases_to_predict, old_purchases, customers, articles
+
+def create_graph(dataset: Dataset
                  ) -> dgl.DGLHeteroGraph:
     """
     Create graph based on adjacency list.
@@ -13,20 +15,20 @@ def create_graph(purchases_to_predict, old_purchases, customers, articles
     graph_data = {
         ('customer', 'buys', 'article'):
             (
-                th.tensor(old_purchases['customer_nid'].values),
-                th.tensor(old_purchases['article_nid'].values),
+                th.tensor(dataset.old_purchases['customer_nid'].values),
+                th.tensor(dataset.old_purchases['article_nid'].values),
         ),
 
         ('article', 'is-bought-by', 'customer'):
             (
-                th.tensor(old_purchases['article_nid'].values),
-                th.tensor(old_purchases['customer_nid'].values),
+                th.tensor(dataset.old_purchases['article_nid'].values),
+                th.tensor(dataset.old_purchases['customer_nid'].values),
         ),
 
         ('customer', 'will-buy', 'article'):
             (
-                th.tensor(purchases_to_predict['customer_nid'].values),
-                th.tensor(purchases_to_predict['article_nid'].values),
+                th.tensor(dataset.purchases_to_predict['customer_nid'].values),
+                th.tensor(dataset.purchases_to_predict['article_nid'].values),
         )
     }
 
@@ -37,12 +39,12 @@ def create_graph(purchases_to_predict, old_purchases, customers, articles
     # Add features.
     columns_to_drop = ['customer_id', 'customer_nid']
     graph.nodes['customer'].data['features'] = th.tensor(
-        customers.drop(columns=columns_to_drop, axis=1).values
+        dataset.customers.drop(columns=columns_to_drop, axis=1).values
     )
 
     columns_to_drop = ['article_id', 'article_nid']
     graph.nodes['articles'].data['features'] = th.tensor(
-        customers.drop(columns=columns_to_drop, axis=1).values
+        dataset.customers.drop(columns=columns_to_drop, axis=1).values
     )
 
     graph.edges['buy']
