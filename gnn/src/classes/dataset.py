@@ -1,8 +1,8 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from gnn.environment import Environment
-from gnn.parameters import Parameters
+from environment import Environment
+from parameters import Parameters
 
 
 class Dataset():
@@ -10,42 +10,42 @@ class Dataset():
     @property
     def purchases_to_predict(self) -> pd.DataFrame:
         """The edges that we want to predict."""
-        return type(self)._purchases_to_predict
+        return self._purchases_to_predict
 
     @property
     def old_purchases(self) -> pd.DataFrame:
         """DataFrame containing all the purchases history."""
-        return type(self)._old_purchases
+        return self._old_purchases
 
     @property
     def customers(self) -> pd.DataFrame:
         """Features of the customers."""
-        return type(self)._customers
+        return self._customers
 
     @property
     def articles(self) -> pd.DataFrame:
         """Features of the articles."""
-        return type(self)._articles
+        return self._articles
 
     @property
     def purchased_list(self) -> pd.DataFrame:
         """All the purchases we want to predict: likely to compare easily with the prediction and calculate the score."""
-        return type(self)._purchases_to_predict
+        return self._purchases_to_predict
 
     @property
     def train_set_length(self) -> int:
         """Number of edges in the train set."""
-        return type(self)._train_set_length
+        return self._train_set_length
 
     @property
     def valid_set_length(self) -> int:
         """Number of edges in the validation set."""
-        return type(self)._valid_set_length
+        return self._valid_set_length
 
     @property
     def test_set_length(self) -> int:
         """Number of edges in the test set."""
-        return type(self)._test_set_length
+        return self._test_set_length
 
     def __init__(self, environment: Environment, parameters: Parameters):
         """Loads and prepare all the elements of the Dataset.
@@ -60,7 +60,7 @@ class Dataset():
 
         self._purchases_to_predict = transactions[transactions['week_number'] == 0]
         self._old_purchases = transactions[transactions['week_number']
-                                           <= parameters['weeks_of_purchases']]
+                                           <= parameters.weeks_of_purchases]
 
         customer_id_list = self._old_purchases['customer_id'].unique()
         article_id_list = self._old_purchases['article_id'].unique()
@@ -70,17 +70,15 @@ class Dataset():
         del transactions
 
         # Load customer and article features.
-        self._customers = pd.read_pickle(
-            'pickles/self._customers_second_iteration.pkl')
-        self._articles = pd.read_pickle(
-            'pickles/self._articles_second_iteration.pkl')
+        self._customers = pd.read_pickle(environment.customers_path)
+        self._articles = pd.read_pickle(environment.articles_path)
 
         # Split self._customers into train / valid / test set through a field `set` with
         # values 0 / 1 / 2.
         customer_id_train, customer_id_test = train_test_split(
-            self._purchases_to_predict.customer_id.unique(), test_size=parameters['test_size'])
+            self._purchases_to_predict.customer_id.unique(), test_size=parameters.test_size)
         customer_id_train, customer_id_valid = train_test_split(
-            customer_id_train, test_size=parameters['valid_size'])
+            customer_id_train, test_size=parameters.valid_size)
 
         test_customers = pd.DataFrame(
             customer_id_test, columns=['customer_id'])
@@ -96,17 +94,20 @@ class Dataset():
         self._customers = self._customers.merge(
             valid_customers, on='customer_id', how='left')
 
+        self._customers['set'] = self._customers['set_x'] + self._customers['set_y']
+        self._customers.drop(columns = ['set_x', 'set_y'], axis = 1, inplace = True)
+
         self._customers['set'].fillna(0, inplace=True)
 
         # Only process  customers who have transactions.
         customer_id = pd.Series(customer_id_list).rename('customer_id')
-        self._customers = customer_id.merge(
-            self._customers, on='customer_id', how='right')
+        self._customers = self._customers.merge(
+            customer_id, on='customer_id', how='right')
 
         # Only process concerned articles who have transactions.
         article_id = pd.Series(article_id_list).rename('article_id')
-        self._articles = article_id.merge(
-            self._articles, on='article_id', how='right')
+        self._articles = self._articles.merge(
+            article_id, on='article_id', how='right')
 
         # Change indexes types in order to save memory.
         self._articles = self._articles.reset_index().rename(
@@ -161,6 +162,8 @@ class Dataset():
 
         # Group the old purchases in order to have one edge per (article,
         # customer), with some extra columns.
+        self._old_purchases['day_number'] = (self._old_purchases['t_dat'].max() - self._old_purchases['t_dat'] ).dt.days
+        
         self._old_purchases = self._old_purchases.groupby(
             ['customer_nid', 'article_nid'], as_index=False
         ).agg(

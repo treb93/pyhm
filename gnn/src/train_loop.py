@@ -5,12 +5,12 @@ import time
 
 import dgl
 import torch
-from gnn.environment import Environment
-from gnn.parameters import Parameters
-from gnn.src.classes.dataloaders import DataLoaders
-from gnn.src.classes.dataset import Dataset
-from gnn.src.get_embeddings import get_embeddings
-from gnn.src.model import ConvModel
+from environment import Environment
+from parameters import Parameters
+from src.classes.dataloaders import DataLoaders
+from src.classes.dataset import Dataset
+from src.get_embeddings import get_embeddings
+from src.model.conv_model import ConvModel
 
 from src.metrics import get_metrics_at_k
 from src.utils import save_txt
@@ -147,39 +147,60 @@ def train_loop(model: ConvModel,
             with torch.no_grad():
                 # training metrics
                 print('TRAINING METRICS')
-                # TODO: Sortir les batches de la fonction sans quoi ça va
-                # coincer.
-                y, node_ids = get_embeddings(graph,
-                                             model,
-                                             dataloaders,
-                                             parameters=parameters,
-                                             environment=environment
-                                             )
+                
+                batch_index = 0
+                train_precision_at_k = 0
+                for input_nodes, output_nodes, blocks in dataloaders.dataloader_train_metrics:
+                    batch_index += 1
+                    if batch_index % 10 == 0:
+                        print(
+                            f"Computing embeddings: Batch {batch_index}")
+            
+                    y, node_ids = get_embeddings(
+                                                graph = graph,
+                                                model = model,
+                                                output_nodes = output_nodes, 
+                                                blocks = blocks,
+                                                parameters=parameters,
+                                                environment=environment
+                                                )
 
-                train_precision_at_k = get_metrics_at_k(
-                    model,
-                    y,
-                    node_ids,
-                    dataset,
-                    parameters
-                )
+                    train_precision_at_k += get_metrics_at_k(
+                        model,
+                        y,
+                        node_ids,
+                        dataset,
+                        parameters
+                    )
+                    
+                train_precision_at_k /= batch_index
 
                 # validation metrics
                 print('VALIDATION METRICS')
-                y, node_ids = get_embeddings(graph,
-                                             model,
-                                             dataloaders.dataloader_valid_metrics,
-                                             environment=environment,
-                                             parameters=parameters
-                                             )
+                
+                batch_index = 0
+                val_precision_at_k = 0
+                
+                for input_nodes, output_nodes, blocks in dataloaders.dataloader_valid_metrics:
+                    y, node_ids = get_embeddings(
+                                                    graph = graph,
+                                                    model = model,
+                                                    output_nodes = output_nodes, 
+                                                    blocks = blocks,
+                                                    parameters=parameters,
+                                                    environment=environment
+                                                )
 
-                val_precision_at_k = get_metrics_at_k(
-                    model,
-                    y,
-                    node_ids,
-                    dataset,
-                    parameters
-                )
+                    val_precision_at_k = get_metrics_at_k(
+                        model,
+                        y,
+                        node_ids,
+                        dataset,
+                        parameters
+                    )
+                    
+                val_precision_at_k /= batch_index
+                
                 sentence = f"""Epoch {epoch: 05d} || TRAINING Loss {train_avg_loss: .5f} | Precision at k {train_precision_at_k * 100: .3f}%
                 || VALIDATION Loss {val_avg_loss: .5f} | Precision {val_precision_at_k * 100: .3f}% """
                 print(sentence)

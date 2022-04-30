@@ -2,12 +2,12 @@
 import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 
-from gnn.parameters import Parameters
-from gnn.src.model.conv_layer import ConvLayer
-from gnn.src.model.cosine_prediction import CosinePrediction
-from gnn.src.model.node_embedding import NodeEmbedding
-from gnn.src.model.predicting_layer import PredictingLayer
-from gnn.src.model.predicting_module import PredictingModule
+from parameters import Parameters
+from src.model.conv_layer import ConvLayer
+from src.model.cosine_prediction import CosinePrediction
+from src.model.node_embedding import NodeEmbedding
+from src.model.predicting_layer import PredictingLayer
+from src.model.predicting_module import PredictingModule
 
 
 class ConvModel(nn.Module):
@@ -61,7 +61,7 @@ class ConvModel(nn.Module):
         if not parameters.embedding_layer:
             self.layers.append(
                 dglnn.HeteroGraphConv(
-                    {g.canonical_etypes[etype][1]: ConvLayer((dim_dict[g.canonical_etypes[etype][0]], dim_dict[g.canonical_etypes[etype][2]]), dim_dict['hidden'], parameters.dropout,
+                    {g.canonical_etypes[etype][1]: ConvLayer((dim_dict[g.canonical_etypes[etype][0]], dim_dict[g.canonical_etypes[etype][2]] + dim_dict['edge']), dim_dict['hidden'], parameters.dropout,
                                                              parameters.aggregator_type, parameters.norm)
                      for etype in edges},
                     aggregate=parameters.aggregator_hetero)
@@ -74,7 +74,7 @@ class ConvModel(nn.Module):
                     {
                         g.canonical_etypes[etype][1]: ConvLayer(
                             (dim_dict['hidden'],
-                             dim_dict['hidden']),
+                             dim_dict['hidden'] + dim_dict['edge']),
                             dim_dict['hidden'],
                             parameters.dropout,
                             parameters.aggregator_type,
@@ -87,7 +87,7 @@ class ConvModel(nn.Module):
                 {
                     g.canonical_etypes[etype][1]: ConvLayer(
                         (dim_dict['hidden'],
-                         dim_dict['hidden']),
+                         dim_dict['hidden'] + dim_dict['edge']),
                         dim_dict['out'],
                         parameters.dropout,
                         parameters.aggregator_type,

@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 import torch
-from gnn.src.model.conv_model import ConvModel
+from src.model.conv_model import ConvModel
 
 from src.utils_data import DataLoader, DataPaths, assign_graph_features
 

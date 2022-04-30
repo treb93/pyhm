@@ -49,4 +49,4 @@ class Parameters():
 
     def update(self, new_parameters):
         for key in new_parameters.keys():
-            self[key] = new_parameters[key]
+            setattr(self, key, new_parameters[key])

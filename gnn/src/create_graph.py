@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch as th
 
-from gnn.src.classes.dataset import Dataset
+from src.classes.dataset import Dataset
 
 
 def create_graph(dataset: Dataset
@@ -18,7 +18,7 @@ def create_graph(dataset: Dataset
             'buys',
             'article'): (
             th.tensor(
-                dataset.old_purchases['customer_nid'].values,
+                dataset._old_purchases['customer_nid'].values,
                 dtype=th.int32),
             th.tensor(
                 dataset.old_purchases['article_nid'].values,
@@ -49,17 +49,18 @@ def create_graph(dataset: Dataset
         graph_data
     )
 
+print('Version 2')
     # Add features.
     columns_to_drop = ['customer_id', 'customer_nid']
     graph.nodes['customer'].data['features'] = th.tensor(
-        dataset.customers.drop(
+        dataset.customers[['age_around_15']].drop(
             columns=columns_to_drop,
             axis=1).values,
         dtype=th.int32)
 
     columns_to_drop = ['article_id', 'article_nid']
     graph.nodes['articles'].data['features'] = th.tensor(
-        dataset.customers.drop(
+        dataset.articles[['age_around_15']].drop(
             columns=columns_to_drop,
             axis=1).values,
         dtype=th.int32)
@@ -69,10 +70,22 @@ def create_graph(dataset: Dataset
         'customer_nid',
         'article_id',
         'article_nid']
+    
     graph.edges['buys'].data['features'] = th.tensor(
         dataset.old_purchases.drop(
             columns=columns_to_drop,
             axis=1).values,
         dtype=th.int32)
+    # Also use purchase amount as weight, i.e multiplication of the source message passing.
+    graph.edges['buys'].data['weight'] = th.tensor(dataset.old_purchases['purchases'].values, dtype=th.int32)
+    
+    graph.edges['is-bought-by'].data['features'] = th.tensor(
+        dataset.old_purchases.drop(
+            columns=columns_to_drop,
+            axis=1).values,
+        dtype=th.int32)
+    # Also use purchase amount as weight, i.e multiplication of the source message passing.
+    graph.edges['is-bought-by'].data['weight'] = th.tensor(dataset.old_purchases['purchases'].values, dtype=th.int32)
+
 
     return graph

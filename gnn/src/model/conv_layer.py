@@ -9,7 +9,7 @@ import dgl.function as fn
 
 from dgl.nn.pytorch import SAGEConv
 
-from gnn.parameters import Parameters
+from parameters import Parameters
 
 
 class ConvLayer(nn.Module):
@@ -144,12 +144,8 @@ class ConvLayer(nn.Module):
 
         if self._aggre_type == 'mean':
             graph.srcdata['h'] = h_neigh
-            graph.update_all(
-                fn.copy_src('h', 'm'),
-                fn.mean('m', 'neigh'))
-            # TODO: Check list functions
-            graph.update_all([fn.copy_e('e', 'm_e'), fn.copy_u('h', 'm_n')], 
-             [fn.mean('m_e', 'edge'), fn.mean('m_n', 'neigh')])
+            graph.update_all([fn.u_mul_e('h', 'weight', 'm_n'), fn.copy_e('e', 'm_e')], 
+             [fn.mean('m_n', 'neigh'), fn.mean('m_e', 'edge')])
             h_neigh = torch.cat(graph.dstdata['neigh'], graph.dstdata['edge'])
 
         elif self._aggre_type == 'mean_nn':

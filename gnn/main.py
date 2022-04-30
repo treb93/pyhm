@@ -12,11 +12,11 @@ from skopt.utils import use_named_args
 from skopt.callbacks import CheckpointSaver
 from skopt import load
 import torch
-from gnn.parameters import Parameters
-from gnn.src.generate_dataloaders import generate_dataloaders
-from gnn.src.max_margin_loss import max_margin_loss
-from gnn.src.model.conv_model import ConvModel
-from gnn.src.train_valid_split import train_valid_split
+from parameters import Parameters
+from src.generate_dataloaders import generate_dataloaders
+from src.max_margin_loss import max_margin_loss
+from src.model.conv_model import ConvModel
+from src.train_valid_split import train_valid_split
 
 from src.builder import create_graph, import_features
 from src.metrics import (create_already_bought, create_ground_truth,

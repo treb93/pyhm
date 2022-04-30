@@ -1,16 +1,17 @@
 import torch
-from gnn.environment import Environment
-from gnn.parameters import Parameters
-from gnn.src.classes.dataset import Dataset
+from environment import Environment
+from parameters import Parameters
+from src.classes.dataset import Dataset
 
 import dgl
 
-from gnn.src.model.conv_model import ConvModel
+from src.model.conv_model import ConvModel
 
 
 def get_embeddings(graph: dgl.DGLHeteroGraph,
                    trained_model: ConvModel,
-                   dataloader: dgl.dataloading.DataLoader,
+                   output_nodes, 
+                   blocks,
                    num_batches: int,
                    environment: Environment,
                    parameters: Parameters):

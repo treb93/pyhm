@@ -5,15 +5,15 @@ import click
 import numpy as np
 import torch
 from dgl.data.utils import save_graphs
-from gnn.environment import Environment
-from gnn.parameters import Parameters
-from gnn.src.classes.dataloaders import DataLoaders
-from gnn.src.classes.dataset import Dataset
-from gnn.src.create_graph import create_graph
-from gnn.src.get_embeddings import get_embeddings
-from gnn.src.max_margin_loss import max_margin_loss
-from gnn.src.model.conv_model import ConvModel
-from gnn.src.train_loop import train_loop
+from environment import Environment
+from parameters import Parameters
+from src.classes.dataloaders import DataLoaders
+from src.classes.dataset import Dataset
+from src.create_graph import create_graph
+from src.get_embeddings import get_embeddings
+from src.max_margin_loss import max_margin_loss
+from src.model.conv_model import ConvModel
+from src.train_loop import train_loop
 
 from src.utils_data import assign_graph_features
 from src.utils import read_data, save_txt, save_outputs
@@ -26,10 +26,6 @@ from presplit import presplit_data
 from logging_config import get_logger
 
 log = get_logger(__name__)
-
-cuda = torch.cuda.is_available()
-device = torch.device('cuda') if cuda else torch.device('cpu')
-
 
 def launch_training(
     environment,
@@ -63,35 +59,41 @@ def launch_training(
         folder 'models'.
     """
 
+    print("Load dataset.")
+    
     # Create full train set
     dataset = Dataset(
         environment, parameters
     )
 
+    print("Initialize graph.")
     # Initialize graph & features
     graph = create_graph(dataset)
 
     dim_dict = {'customer': graph.nodes['customer'].data['features'].shape[1],
                 'article': graph.nodes['article'].data['features'].shape[1],
-                'buys': graph.edges['buys'].data['features'].shape[1],
-                'out': parameters['out_dim'],
-                'hidden': parameters['hidden_dim']}
+                'edge': graph.edges['buys'].data['features'].shape[1],
+                'out': parameters.out_dim,
+                'hidden': parameters.hidden_dim}
 
-    all_sids = None
 
+    print("Build model.")
     # Initialize model
     model = ConvModel(graph,
                       dim_dict,
                       parameters
                       )
-    if cuda:
-        model = model.to(device)
+    if environment.cuda:
+        print("Assigning model to GPU.")
+        model = model.to(environment.device)
+        
 
-    model.load_state_dict(
-        torch.load(
-            "models/FULL_Recall_3.29_2022-04-1823:30.pth",
-            map_location=device))
+    #model.load_state_dict(
+    #    torch.load(
+    #        "models/FULL_Recall_3.29_2022-04-1823:30.pth",
+    #        map_location=environment.device))
 
+    print("Initialize Dataloaders.")
     dataloaders = DataLoaders(graph,
                               dataset,
                               parameters,
@@ -185,19 +187,19 @@ def launch_training(
     print("Saved graphs to disk.")
 
 
-@ click.command()
-@ click.option('--parameters_path', default='parameters.pkl',
+@click.command()
+@click.option('--parameters_path', default='parameters.pkl',
                help='Path where the fixed parameters used in the hyperparametrization were saved.')
-@ click.option('--params_path', default='params.pkl',
+@click.option('--params_path', default='params.pkl',
                help='Path where the optimal hyperparameters found in the hyperparametrization were saved.')
-@ click.option('-viz', '--visualization', count=True, help='Visualize result')
-@ click.option('--check_embedding', count=True,
+@click.option('-viz', '--visualization', count=True, help='Visualize result')
+@click.option('--check_embedding', count=True,
                help='Explore embedding result')
-@ click.option('--remove',
+@click.option('--remove',
                default=.99,
                help='Percentage of users to remove from train set. Ideally,'
                ' remove would be 0. However, higher "remove" accelerates training.')
-@ click.option('--batch_size', default=2048,
+@click.option('--batch_size', default=2048,
                help='Number of edges in a train / validation batch')
 def main(
         parameters_path,
@@ -228,11 +230,8 @@ def main(
         'purchases_sample': 0.5,
         'prediction_layer': 'cos',
         'use_recency': True,
-        'num_workers': 4 if cuda else 0
+        'num_workers': 4 if environment.cuda else 0
     })
-
-    parameters.pop('remove', None)
-    parameters.pop('batch_size', None)
 
     launch_training(
         environment=environment,

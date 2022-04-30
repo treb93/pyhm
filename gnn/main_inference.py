@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from src.builder import create_graph
-from src.model import ConvModel
+from src.model.conv_model import ConvModel
 from src.utils_data import DataPaths, DataLoader, FixedParameters, assign_graph_features
 from src.utils_inference import read_graph, fetch_uids, postprocess_recs
 from src.train.run import get_embeddings

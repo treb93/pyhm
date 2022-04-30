@@ -1,6 +1,6 @@
-from gnn.parameters import Parameters
-from gnn.src.classes.dataset import Dataset
-from gnn.src.model import ConvModel
+from parameters import Parameters
+from src.classes.dataset import Dataset
+from src.model.conv_model import ConvModel
 from src.utils import softmax
 from collections import defaultdict
 
@@ -39,7 +39,7 @@ def get_recommandation_tensor(y,
                               node_ids,
                               model: ConvModel,
                               parameters: Parameters
-                              ) -> torch.tensor():
+                              ) -> torch.tensor:
     """
     Computes K recommendations for all users, given hidden states.
 
@@ -94,7 +94,7 @@ def get_recommandation_tensor(y,
 def precision_at_k(
         recommendations: torch.tensor,
         node_ids,
-        dataset: Dataset) -> int:
+        dataset: Dataset) -> float:
     """
     Given the recommendations and the purchase list, computes precision, recall & coverage.
     """
@@ -128,7 +128,7 @@ def get_metrics_at_k(model: ConvModel,
                      node_ids,
                      dataset: Dataset,
                      parameters: Parameters
-                     ):
+                     ) -> float:
     """
     Function combining all previous functions: create already_bought & ground_truth dict, get recs and compute metrics.
     """
@@ -141,7 +141,7 @@ def get_metrics_at_k(model: ConvModel,
     precision = precision_at_k(
         recommendations, node_ids, dataset)
 
-    return precision.sum()
+    return precision
 
 
 def MRR_neg_edges(model,

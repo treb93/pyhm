@@ -5,8 +5,8 @@ import pandas as pd
 import numpy as np
 import torch as th
 from dgl.dataloading import DataLoader
-from gnn.parameters import Parameters
-from gnn.src.classes.dataset import Dataset
+from parameters import Parameters
+from src.classes.dataset import Dataset
 
 
 class DataLoaders():
@@ -128,34 +128,34 @@ class DataLoaders():
     @property
     def dataloader_train_loss(self) -> DataLoader:
         """Positive & negative edges for training."""
-        return type(self)._dataloader_train_loss
+        return self._dataloader_train_loss
 
     @property
     def dataloader_train_metrics(self) -> DataLoader:
         """Batches of customers for metrics calculation, as we need to do it on a whole purchase list basis."""
-        return type(self)._dataloader_train_loss
+        return self._dataloader_train_loss
 
     @property
     def dataloader_valid_loss(self) -> DataLoader:
         """Positive & negative edges for loss calculation."""
-        return type(self)._dataloader_train_loss
+        return self._dataloader_train_loss
 
     @property
     def dataloader_valid_metrics(self) -> DataLoader:
         """Batches of customers for metrics calculation, as we need to do it on a whole purchase list basis."""
-        return type(self)._dataloader_train_loss
+        return self._dataloader_train_loss
 
     @property
     def dataloader_test(self) -> DataLoader:
         """Batches of customers for metrics calculation, as we need to do it on a whole purchase list basis."""
-        return type(self)._dataloader_test
+        return self._dataloader_test
 
     @property
     def num_batches_train(self) -> int:
         """Number of training batches."""
-        return type(self)._num_batches_train
+        return self._num_batches_train
 
     @property
     def num_batches_valid(self) -> DataLoader:
         """Number of validation batches."""
-        return type(self)._num_batches_valid
+        return self._num_batches_valid
