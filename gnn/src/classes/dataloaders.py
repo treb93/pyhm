@@ -14,7 +14,8 @@ class DataLoaders():
             self,
             graph: dgl.DGLHeteroGraph,
             dataset: Dataset,
-            parameters: Parameters):
+            parameters: Parameters,
+            environment):
         """
         Since data is large, it is fed to the model in batches. This creates batches for train, valid & test.
 
@@ -49,48 +50,59 @@ class DataLoaders():
         self._dataloader_train_loss = dgl.dataloading.DataLoader(
             graph,
             {
-                'will-buy': th.tensor(purchases_to_predict[purchases_to_predict['set'] == 0].index.values, dtype=th.int32)
+                'will-buy': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 0].index.values, dtype=th.int32).to(environment.device)
             },
             negative_sampler,
-            batch_size=10,
+            batch_size=parameters.batch_size,
+            device = environment.device,
+            use_uva = True,
             shuffle=True,
             drop_last=False,
-            pin_memory=True)
+            pin_memory=True,
+            num_workers=0)
 
         self._dataloader_train_metrics = dgl.dataloading.DataLoader(
             graph,
             {
-                'customer': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 0]['customer_nid'].unique()),
-                'article': th.tensor(dataset.purchases_to_predict['article_nid'].unique())
+                'customer': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 0]['customer_nid'].unique()).to(environment.device),
+                'article': th.tensor(dataset.purchases_to_predict['article_nid'].unique()).to(environment.device)
             },
             sampler,
-            batch_size=1024,
+            batch_size=parameters.batch_size,
+            device = environment.device,
+            use_uva = True,
             shuffle=True,
-            drop_last=False)
+            drop_last=False,
+            num_workers=0)
 
         self._dataloader_valid_loss = dgl.dataloading.DataLoader(
             graph,
             {
-                'will-buy': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1].index.values, dtype=th.int32)
+                'will-buy': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1].index.values, dtype=th.int32).to(environment.device)
             },
             negative_sampler,
             batch_size=parameters.batch_size,
+            device = environment.device,
+            use_uva = True,
             shuffle=True,
             drop_last=False,
             pin_memory=True,
-            num_workers=parameters.num_workers
+            num_workers=0
         )
 
         self._dataloader_valid_metrics = dgl.dataloading.DataLoader(
             graph,
             {
-                'customer': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1]['customer_nid'].unique()),
-                'article': th.tensor(dataset.purchases_to_predict['article_nid'].unique())
+                'customer': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1]['customer_nid'].unique()).to(environment.device),
+                'article': th.tensor(dataset.purchases_to_predict['article_nid'].unique()).to(environment.device)
             },
             sampler,
-            batch_size=1024,
+            batch_size=parameters.batch_size,
+            device = environment.device,
+            use_uva = True,
             shuffle=True,
-            drop_last=False)
+            drop_last=False,
+            num_workers=0)
 
         self._dataloader_test = dgl.dataloading.DataLoader(
             graph,
@@ -99,9 +111,12 @@ class DataLoaders():
                 'article': th.tensor(dataset.purchases_to_predict['article_nid'].unique())
             },
             sampler,
-            batch_size=1024,
+            batch_size=parameters.batch_size,
+            device = environment.device,
+            use_uva = True,
             shuffle=True,
-            drop_last=False)
+            drop_last=False,
+            num_workers=0)
 
         self._num_batches_train = math.ceil(
             dataset.train_set_length /
@@ -112,7 +127,7 @@ class DataLoaders():
 
     @property
     def dataloader_train_loss(self) -> DataLoader:
-        """Positive & negative edge for training."""
+        """Positive & negative edges for training."""
         return type(self)._dataloader_train_loss
 
     @property
@@ -122,7 +137,7 @@ class DataLoaders():
 
     @property
     def dataloader_valid_loss(self) -> DataLoader:
-        """Positive & negative edge for loss calculation."""
+        """Positive & negative edges for loss calculation."""
         return type(self)._dataloader_train_loss
 
     @property

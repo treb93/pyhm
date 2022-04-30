@@ -54,9 +54,9 @@ class FixedParameters:
         self.discern_clicks = False
         self.duplicates = duplicates  # 'keep_last', 'keep_all', 'count_occurrence'
         self.edge_batch_size = edge_batch_size
-        self.etype = [('user', 'buys', 'item')]
+        self.etype = [('customer', 'buys', 'article')]
         if self.discern_clicks:
-            self.etype.append(('user', 'clicks', 'item'))
+            self.etype.append(('customer', 'clicks', 'article'))
         self.explore = True
         self.include_sport = False
         self.item_id_type = item_id_type
@@ -73,10 +73,11 @@ class FixedParameters:
         self.remove_on_inference = .7
         self.remove_train_eids = False
         self.report_model_coverage = False
-        self.reverse_etype = {('user', 'buys', 'item'): ('item', 'bought-by', 'user')}
+        self.reverse_etype = {('customer', 'buys', 'article'): (
+            'article', 'bought-by', 'customer')}
         if self.discern_clicks:
-            self.reverse_etype[('user', 'clicks', 'item')] = (
-                'item', 'clicked-by', 'user')
+            self.reverse_etype[('customer', 'clicks', 'article')] = (
+                'article', 'clicked-by', 'customer')
         self.run_inference = 1
         self.spt_id_type = 'sport_id'
         self.start_epoch = start_epoch

@@ -91,7 +91,7 @@ def inference_ondemand(user_ids,  # List or 'all'
                                       )
     # Preprocess: fetch right user ids
     if user_ids[0] == 'all':
-        test_uids = np.arange(graph.num_nodes('user'))
+        test_uids = np.arange(graph.num_nodes('customer'))
     else:
         test_uids = fetch_uids(user_ids,
                                ctm_id_df)
@@ -103,8 +103,8 @@ def inference_ondemand(user_ids,  # List or 'all'
         already_bought_dict = create_already_bought(graph, bought_eids)
 
     # Load model
-    dim_dict = {'user': graph.nodes['user'].data['features'].shape[1],
-                'item': graph.nodes['item'].data['features'].shape[1],
+    dim_dict = {'customer': graph.nodes['customer'].data['features'].shape[1],
+                'article': graph.nodes['article'].data['features'].shape[1],
                 'out': params['out_dim'],
                 'hidden': params['hidden_dim']}
     if 'sport' in graph.ntypes:
@@ -128,8 +128,8 @@ def inference_ondemand(user_ids,  # List or 'all'
         trained_model = trained_model.to(device)
 
     # Create dataloader
-    all_iids = np.arange(graph.num_nodes('item'))
-    test_node_ids = {'user': test_uids, 'item': all_iids}
+    all_iids = np.arange(graph.num_nodes('article'))
+    test_node_ids = {'customer': test_uids, 'article': all_iids}
     n_layers = params['n_layers']
     if params['embedding_layer']:
         n_layers = n_layers - 1

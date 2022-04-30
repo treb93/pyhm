@@ -10,12 +10,13 @@ from gnn.parameters import Parameters
 from gnn.src.classes.dataloaders import DataLoaders
 from gnn.src.classes.dataset import Dataset
 from gnn.src.create_graph import create_graph
+from gnn.src.get_embeddings import get_embeddings
 from gnn.src.max_margin_loss import max_margin_loss
+from gnn.src.model.conv_model import ConvModel
 from gnn.src.train_loop import train_loop
 
 from src.utils_data import assign_graph_features
 from src.utils import read_data, save_txt, save_outputs
-from src.model import ConvModel
 from src.utils_vizualization import plot_train_loss
 from src.metrics import (create_already_bought, create_ground_truth,
                          get_metrics_at_k, get_recommandation_tensor)
@@ -70,8 +71,9 @@ def launch_training(
     # Initialize graph & features
     graph = create_graph(dataset)
 
-    dim_dict = {'user': graph.nodes['user'].data['features'].shape[1],
-                'item': graph.nodes['item'].data['features'].shape[1],
+    dim_dict = {'customer': graph.nodes['customer'].data['features'].shape[1],
+                'article': graph.nodes['article'].data['features'].shape[1],
+                'buys': graph.edges['buys'].data['features'].shape[1],
                 'out': parameters['out_dim'],
                 'hidden': parameters['hidden_dim']}
 
@@ -79,14 +81,8 @@ def launch_training(
 
     # Initialize model
     model = ConvModel(graph,
-                      parameters['n_layers'],
                       dim_dict,
-                      parameters['norm'],
-                      parameters['dropout'],
-                      parameters['aggregator_type'],
-                      parameters['pred'],
-                      parameters['aggregator_hetero'],
-                      parameters['embedding_layer'],
+                      parameters
                       )
     if cuda:
         model = model.to(device)
@@ -96,35 +92,10 @@ def launch_training(
             "models/FULL_Recall_3.29_2022-04-1823:30.pth",
             map_location=device))
 
-    # Initialize dataloaders
-    # get training and test ids
-    # (
-    #    train_graph,
-    #    train_eids_dict,
-    #    valid_eids_dict,
-    #    subtrain_uids,
-    #    valid_uids,
-    #    test_uids,
-    #    all_iids,
-    #    ground_truth_subtrain,
-    #    ground_truth_valid,
-    #    all_eids_dict
-    # ) = train_valid_split(
-    #    graph,
-    #    data.ground_truth_test,
-    #    parameters.etype,
-    #    parameters.subtrain_size,
-    #    parameters.valid_size,
-    #    parameters.reverse_etype,
-    #    parameters.train_on_clicks,
-    #    parameters.remove_train_eids,
-    #    parameters['clicks_sample'],
-    #    parameters['purchases_sample'],
-    # )
-
     dataloaders = DataLoaders(graph,
                               dataset,
-                              parameters
+                              parameters,
+                              environment
                               )
 
     # Run model
@@ -136,11 +107,11 @@ def launch_training(
         "a")
 
     trained_model, viz, best_metrics = train_loop(
-        model,
-        graph,
-        dataset,
-        dataloaders,
-        max_margin_loss,
+        model=model,
+        graph=graph,
+        dataset=dataset,
+        dataloaders=dataloaders,
+        loss_fn=max_margin_loss,
         get_metrics=True,
         parameters=parameters,
         environment=environment,
@@ -151,81 +122,39 @@ def launch_training(
         plot_train_loss(hyperparameters_text, viz)
 
     # Report performance on validation set
-    sentence = ("BEST VALIDATION Precision "
-                "{:.3f}% | Recall {:.3f}% | Coverage {:.2f}%"
-                .format(best_metrics['precision'] * 100,
-                        best_metrics['recall'] * 100,
-                        best_metrics['coverage'] * 100))
+    sentence = f"BEST VALIDATION Precision {best_metrics['precision'] * 100:.3f}% "
 
     log.info(sentence)
-    save_txt(sentence, train_data_paths.result_filepath, mode='a')
+    save_txt(sentence, environment.result_filepath, mode='a')
 
     # Report performance on test set
     log.debug('Test metrics start ...')
     trained_model.eval()
     with torch.no_grad():
         embeddings, node_ids = get_embeddings(graph,
-                                              parameters['out_dim'],
                                               trained_model,
-                                              nodeloader_test,
-                                              num_batches_test,
-                                              cuda,
-                                              device,
-                                              parameters['embedding_layer'],
+                                              dataloaders.dataloader_test,
+                                              dataset.test_set_length,
+                                              environment,
+                                              parameters
                                               )
 
-        for ground_truth in [
-                data.ground_truth_purchase_test,
-                data.ground_truth_test]:
-            precision = get_metrics_at_k(
-                embeddings,
-                graph,
-                trained_model,
-                parameters['out_dim'],
-                ground_truth,
-                all_eids_dict[('user', 'buys', 'item')],
-                parameters.k,
-                True,  # Remove already bought
-                cuda,
-                device,
-                parameters['pred'],
-                parameters['use_popularity'],
-                parameters['weight_popularity'],
-            )
+        precision = get_metrics_at_k(
+            model=trained_model,
+            y=embeddings,
+            node_ids=node_ids,
+            dataset=dataset,
+            parameters=parameters
+        )
 
-            sentence = ("TEST Precision "
-                        "{:.3f}% | Recall {:.3f}% | Coverage {:.2f}%"
-                        .format(precision * 100,
-                                recall * 100,
-                                coverage * 100))
-            log.info(sentence)
-            save_txt(sentence, train_data_paths.result_filepath, mode='a')
+        sentence = f"TEST Precision {precision:.3f}%"
+        log.info(sentence)
+        save_txt(sentence, environment.result_filepath, mode='a')
 
     if check_embedding:
         trained_model.eval()
         with torch.no_grad():
             log.debug('ANALYSIS OF RECOMMENDATIONS')
-            if 'sport' in train_graph.ntypes:
-                result_sport = explore_sports(embeddings,
-                                              data.sport_feat_df,
-                                              data.spt_id,
-                                              parameters.num_choices)
-
-                save_txt(
-                    result_sport,
-                    train_data_paths.result_filepath,
-                    mode='a')
-
-            already_bought_dict = create_already_bought(
-                graph, all_eids_dict[('user', 'buys', 'item')], )
-            already_clicked_dict = None
-            if parameters.discern_clicks:
-                already_clicked_dict = create_already_bought(
-                    graph, all_eids_dict[('user', 'clicks', 'item')], etype='clicks', )
-
-            users, items = data.ground_truth_test
-            ground_truth_dict = create_ground_truth(users, items)
-            user_ids = np.unique(users).tolist()
 
             recs = get_recommandation_tensor(
                 embeddings,
@@ -234,59 +163,12 @@ def launch_training(
                 parameters
             )
 
-            users, items = data.ground_truth_purchase_test
-            ground_truth_purchase_dict = create_ground_truth(users, items)
-            explore_recs(recs,
-                         already_bought_dict,
-                         already_clicked_dict,
-                         ground_truth_dict,
-                         ground_truth_purchase_dict,
-                         data.item_feat_df,
-                         parameters.num_choices,
-                         data.pdt_id,
-                         parameters.item_id_type,
-                         train_data_paths.result_filepath)
-
-            if parameters.item_id_type == 'SPECIFIC ITEM IDENTIFIER':
-                coverage_metrics = check_coverage(data.user_item_train,
-                                                  data.item_feat_df,
-                                                  data.pdt_id,
-                                                  recs)
-
-                sentence = (
-                    "COVERAGE \n|| All transactions : "
-                    "Generic {:.1f}% | Junior {:.1f}% | Male {:.1f}% | Female {:.1f}% | Eco {:.1f}% "
-                    "\n|| Recommendations : "
-                    "Generic {:.1f}% | Junior {:.1f}% | Male {:.1f}% | Female {:.1f} | Eco {:.1f}%%" .format(
-                        coverage_metrics['generic_mean_whole'] * 100,
-                        coverage_metrics['junior_mean_whole'] * 100,
-                        coverage_metrics['male_mean_whole'] * 100,
-                        coverage_metrics['female_mean_whole'] * 100,
-                        coverage_metrics['eco_mean_whole'] * 100,
-                        coverage_metrics['generic_mean_recs'] * 100,
-                        coverage_metrics['junior_mean_recs'] * 100,
-                        coverage_metrics['male_mean_recs'] * 100,
-                        coverage_metrics['female_mean_recs'] * 100,
-                        coverage_metrics['eco_mean_recs'] * 100,
-                    ))
-                log.info(sentence)
-                save_txt(sentence, train_data_paths.result_filepath, mode='a')
-
-        save_outputs(
-            {
-                'embeddings': embeddings,
-                'already_bought': already_bought_dict,
-                'already_clicked': already_bought_dict,
-                'ground_truth': ground_truth_dict,
-                'recs': recs,
-            },
-            'outputs/'
-        )
+            # TODO: réutiliser explore_recs ?
 
     # Save model
     date = str(datetime.datetime.now())[:-10].replace(' ', '')
     torch.save(trained_model.state_dict(),
-               f'models/FULL_Recall_{recall * 100:.2f}_{date}.pth')
+               f'models/FULL_Recall_{precision * 100:.2f}_{date}.pth')
     # Save all necessary params
     save_outputs(
         {
@@ -297,16 +179,10 @@ def launch_training(
     )
     print("Saved model & parameters to disk.")
 
-    # Save graph & ID mapping
+    # Save graphs
     save_graphs(f'models/{date}_graph.bin', [graph])
-    save_outputs(
-        {
-            f'{date}_ctm_id': data.ctm_id,
-            f'{date}_pdt_id': data.pdt_id,
-        },
-        'models/'
-    )
-    print("Saved graph & ID mapping to disk.")
+
+    print("Saved graphs to disk.")
 
 
 @ click.command()

@@ -62,8 +62,8 @@ def assign_graph_features(graph,
         fixed_params.spt_id_type,
     )
 
-    graph.nodes['user'].data['features'] = features_dict['user_feat']
-    graph.nodes['item'].data['features'] = features_dict['item_feat']
+    graph.nodes['customer'].data['features'] = features_dict['user_feat']
+    graph.nodes['article'].data['features'] = features_dict['item_feat']
     if 'sport' in graph.ntypes:
         graph.nodes['sport'].data['features'] = features_dict['sport_feat']
 
@@ -88,7 +88,7 @@ def assign_graph_features(graph,
             graph.edges['bought-by'].data['recency'] = recency_tensor
 
     if params['use_popularity']:
-        graph.nodes['item'].data['popularity'] = features_dict['item_pop']
+        graph.nodes['article'].data['popularity'] = features_dict['item_pop']
 
     if fixed_params.duplicates == 'count_occurrence':
         if fixed_params.discern_clicks:

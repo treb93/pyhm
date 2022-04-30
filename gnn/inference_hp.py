@@ -2,11 +2,11 @@ import math
 
 import numpy as np
 import torch
+from gnn.src.model.conv_model import ConvModel
 
 from src.utils_data import DataLoader, DataPaths, assign_graph_features
 
 from src.builder import (create_graph)
-from src.model import ConvModel
 from src.sampling import train_valid_split, generate_dataloaders
 from src.metrics import get_metrics_at_k
 from src.train.run import get_embeddings
@@ -88,10 +88,11 @@ def inference_fn(trained_model,
                                         **params,
                                         )
 
-    dim_dict = {'user': valid_graph.nodes['user'].data['features'].shape[1],
-                'item': valid_graph.nodes['item'].data['features'].shape[1],
-                'out': params['out_dim'],
-                'hidden': params['hidden_dim']}
+    dim_dict = {
+        'customer': valid_graph.nodes['customer'].data['features'].shape[1],
+        'article': valid_graph.nodes['article'].data['features'].shape[1],
+        'out': params['out_dim'],
+        'hidden': params['hidden_dim']}
 
     all_sids = None
     if 'sport' in valid_graph.ntypes:
@@ -185,7 +186,7 @@ def inference_fn(trained_model,
                 trained_model,
                 params['out_dim'],
                 ground_truth,
-                all_eids_dict[('user', 'buys', 'item')],
+                all_eids_dict[('customer', 'buys', 'article')],
                 fixed_params.k,
                 True,  # Remove already bought
                 cuda,

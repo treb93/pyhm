@@ -405,7 +405,6 @@ def df_to_adjacency_list(user_item_train: pd.DataFrame,
     return adjacency_dict, ground_truth_test, ground_truth_purchase_test, user_item_train
 
 
-
 def import_features(g: dgl.DGLHeteroGraph,
                     user_feat_df,
                     item_feat_df,
@@ -450,7 +449,7 @@ def import_features(g: dgl.DGLHeteroGraph,
                       user_feat_df.is_female.values),
                      axis=1)
 
-    user_feat = np.zeros((g.number_of_nodes('user'), 2))
+    user_feat = np.zeros((g.number_of_nodes('customer'), 2))
     user_feat[ids] = feats
 
     user_feat = torch.tensor(user_feat).float()
@@ -462,7 +461,7 @@ def import_features(g: dgl.DGLHeteroGraph,
                                           how='left',
                                           on=item_id_type)
         item_feat_df = item_feat_df[item_feat_df.pdt_new_id < g.number_of_nodes(
-            'item')]  # Only IDs that are in graph
+            'article')]  # Only IDs that are in graph
 
         ids = item_feat_df.pdt_new_id.values.astype(int)
         feats = np.stack((item_feat_df.is_junior.values,
@@ -472,11 +471,11 @@ def import_features(g: dgl.DGLHeteroGraph,
                           ),
                          axis=1)
 
-        item_feat = np.zeros((g.number_of_nodes('item'), feats.shape[1]))
+        item_feat = np.zeros((g.number_of_nodes('article'), feats.shape[1]))
         item_feat[ids] = feats
         item_feat = torch.tensor(item_feat).float()
     elif item_id_type in ['GENERAL ITEM IDENTIFIER']:
-        item_feat = torch.zeros((g.number_of_nodes('item'), 4))
+        item_feat = torch.zeros((g.number_of_nodes('article'), 4))
     else:
         raise KeyError(f'Item ID {item_id_type} not recognized.')
 
@@ -501,7 +500,7 @@ def import_features(g: dgl.DGLHeteroGraph,
 
     # Popularity
     if get_popularity:
-        item_popularity = np.zeros((g.number_of_nodes('item'), 1))
+        item_popularity = np.zeros((g.number_of_nodes('article'), 1))
         pop_df = user_item_train.merge(pdt_id,
                                        how='left',
                                        on=item_id_type)

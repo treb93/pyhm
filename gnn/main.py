@@ -14,10 +14,11 @@ from skopt import load
 import torch
 from gnn.parameters import Parameters
 from gnn.src.generate_dataloaders import generate_dataloaders
+from gnn.src.max_margin_loss import max_margin_loss
+from gnn.src.model.conv_model import ConvModel
 from gnn.src.train_valid_split import train_valid_split
 
 from src.builder import create_graph, import_features
-from src.model import ConvModel, max_margin_loss
 from src.metrics import (create_already_bought, create_ground_truth,
                          get_metrics_at_k, get_recommandation_tensor)
 from src.train.run import train_loop, get_embeddings
@@ -130,10 +131,11 @@ def train(data, fixed_params, data_paths,
                                         **params,
                                         )
 
-    dim_dict = {'user': valid_graph.nodes['user'].data['features'].shape[1],
-                'item': valid_graph.nodes['item'].data['features'].shape[1],
-                'out': params['out_dim'],
-                'hidden': params['hidden_dim']}
+    dim_dict = {
+        'customer': valid_graph.nodes['customer'].data['features'].shape[1],
+        'article': valid_graph.nodes['article'].data['features'].shape[1],
+        'out': params['out_dim'],
+        'hidden': params['hidden_dim']}
 
     all_sids = None
     if 'sport' in valid_graph.ntypes:
@@ -261,7 +263,7 @@ def train(data, fixed_params, data_paths,
         out_dim=params['out_dim'],
         num_batches_val_metrics=num_batches_val_metrics,
         num_batches_subtrain=num_batches_subtrain,
-        bought_eids=train_eids_dict[('user', 'buys', 'item')],
+        bought_eids=train_eids_dict[('customer', 'buys', 'article')],
         ground_truth_subtrain=ground_truth_subtrain,
         ground_truth_valid=ground_truth_valid,
         remove_already_bought=True,
@@ -314,7 +316,7 @@ def train(data, fixed_params, data_paths,
                 trained_model,
                 params['out_dim'],
                 ground_truth,
-                all_eids_dict[('user', 'buys', 'item')],
+                all_eids_dict[('customer', 'buys', 'article')],
                 fixed_params.k,
                 True,  # Remove already bought
                 cuda,
@@ -345,11 +347,11 @@ def train(data, fixed_params, data_paths,
                 save_txt(result_sport, data_paths.result_filepath, mode='a')
 
             already_bought_dict = create_already_bought(
-                valid_graph, all_eids_dict[('user', 'buys', 'item')], )
+                valid_graph, all_eids_dict[('customer', 'buys', 'article')], )
             already_clicked_dict = None
             if fixed_params.discern_clicks:
                 already_clicked_dict = create_already_bought(
-                    valid_graph, all_eids_dict[('user', 'clicks', 'item')], etype='clicks', )
+                    valid_graph, all_eids_dict[('customer', 'clicks', 'article')], etype='clicks', )
 
             users, items = data.ground_truth_test
             ground_truth_dict = create_ground_truth(users, items)

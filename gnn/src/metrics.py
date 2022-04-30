@@ -53,7 +53,7 @@ def get_recommandation_tensor(y,
         cos = nn.CosineSimilarity(dim=1, eps=1e-6)
         similarities = cos(
             y['customer'].reshape(-1, parameters.embed_dim, 1),
-            y['item'].reshape(1, parameters.embed_dim, -1)
+            y['article'].reshape(1, parameters.embed_dim, -1)
         )
 
         # Get the indexes of the best score
@@ -69,12 +69,12 @@ def get_recommandation_tensor(y,
         for user_id in node_ids['customer']:
             counter = counter + 1
             print(f"Customer n°{counter}")
-            user_emb = y['user'][user_id]
+            user_emb = y['customer'][user_id]
 
             user_emb_rpt = torch.cat(
                 len(node_ids['article']) * [user_emb]).reshape(-1, parameters.embed_dim)
 
-            cat_embed = torch.cat((user_emb_rpt, y['item']), 1)
+            cat_embed = torch.cat((user_emb_rpt, y['article']), 1)
             ratings = model.pred_fn.layer_nn(cat_embed)
 
             ratings_formatted = ratings.cpu().detach(
@@ -91,7 +91,10 @@ def get_recommandation_tensor(y,
     return recommandations
 
 
-def precision_at_k(recommendations: torch.tensor, node_ids, dataset: Dataset):
+def precision_at_k(
+        recommendations: torch.tensor,
+        node_ids,
+        dataset: Dataset) -> int:
     """
     Given the recommendations and the purchase list, computes precision, recall & coverage.
     """
@@ -117,7 +120,7 @@ def precision_at_k(recommendations: torch.tensor, node_ids, dataset: Dataset):
             )
         ) / min(len(x['prediction']), x['length']), axis=1)
 
-    return precision
+    return precision.mean()
 
 
 def get_metrics_at_k(model: ConvModel,
@@ -138,7 +141,7 @@ def get_metrics_at_k(model: ConvModel,
     precision = precision_at_k(
         recommendations, node_ids, dataset)
 
-    return precision
+    return precision.sum()
 
 
 def MRR_neg_edges(model,

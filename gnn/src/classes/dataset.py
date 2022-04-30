@@ -42,6 +42,11 @@ class Dataset():
         """Number of edges in the validation set."""
         return type(self)._valid_set_length
 
+    @property
+    def test_set_length(self) -> int:
+        """Number of edges in the test set."""
+        return type(self)._test_set_length
+
     def __init__(self, environment: Environment, parameters: Parameters):
         """Loads and prepare all the elements of the Dataset.
 
@@ -53,9 +58,14 @@ class Dataset():
         # Load transactions dataset.
         transactions = pd.read_pickle(environment.transactions_path)
 
-        self._old_purchases = transactions[(transactions['week_number'] > 0) & (
-            transactions['week_number'] <= parameters['weeks_of_purchases'])]
         self._purchases_to_predict = transactions[transactions['week_number'] == 0]
+        self._old_purchases = transactions[transactions['week_number']
+                                           <= parameters['weeks_of_purchases']]
+
+        customer_id_list = self._old_purchases['customer_id'].unique()
+        article_id_list = self._old_purchases['article_id'].unique()
+
+        self._old_purchases = self._old_purchases[self._old_purchases['week_number'] > 0]
 
         del transactions
 
@@ -73,31 +83,30 @@ class Dataset():
             customer_id_train, test_size=parameters['valid_size'])
 
         test_customers = pd.DataFrame(
-            customer_id_valid, columns=['customer_id'])
+            customer_id_test, columns=['customer_id'])
         test_customers['set'] = 2
+
         valid_customers = pd.DataFrame(
             customer_id_valid, columns=['customer_id'])
         valid_customers['set'] = 1
 
         self._customers = self._customers.merge(
             test_customers, on='customer_id', how='left')
+
         self._customers = self._customers.merge(
             valid_customers, on='customer_id', how='left')
+
         self._customers['set'].fillna(0, inplace=True)
 
-        # Only process  self._customers who have transactions.
-        customer_id = pd.Series(
-            self._old_purchases.customer_id.unique() +
-            self._purchases_to_predict.customer_id.unique()).rename('customer_id')
-        self._customers = self._customers.merge(
-            customer_id, on='customer_id', how='right')
+        # Only process  customers who have transactions.
+        customer_id = pd.Series(customer_id_list).rename('customer_id')
+        self._customers = customer_id.merge(
+            self._customers, on='customer_id', how='right')
 
-        # Only process concerned self._articles who have transactions.
-        article_id = pd.Series(
-            self._old_purchases.article_id.unique() +
-            self._purchases_to_predict.article_id.unique()).rename('article_id')
-        self._articles = self._articles.merge(
-            article_id, on='article_id', how='right')
+        # Only process concerned articles who have transactions.
+        article_id = pd.Series(article_id_list).rename('article_id')
+        self._articles = article_id.merge(
+            self._articles, on='article_id', how='right')
 
         # Change indexes types in order to save memory.
         self._articles = self._articles.reset_index().rename(
@@ -113,11 +122,13 @@ class Dataset():
         # Update transaction lists with new IDs and validation set Tag.
         self._old_purchases = self._old_purchases.merge(
             self._articles[['article_id', 'article_nid']], on='article_id', how='left')
+
         self._old_purchases = self._old_purchases.merge(
             self._customers[['customer_id', 'customer_nid', 'set']], on='customer_id', how='left')
 
         self._purchases_to_predict = self._purchases_to_predict.merge(
             self._articles[['article_id', 'article_nid']], on='article_id', how='left')
+
         self._purchases_to_predict = self._purchases_to_predict.merge(
             self._customers[['customer_id', 'customer_nid', 'set']], on='customer_id', how='left')
 

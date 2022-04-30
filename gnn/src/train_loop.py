@@ -5,26 +5,25 @@ import time
 
 import dgl
 import torch
+from gnn.environment import Environment
+from gnn.parameters import Parameters
 from gnn.src.classes.dataloaders import DataLoaders
 from gnn.src.classes.dataset import Dataset
 from gnn.src.get_embeddings import get_embeddings
+from gnn.src.model import ConvModel
 
 from src.metrics import get_metrics_at_k
 from src.utils import save_txt
 
 
-def train_loop(model,
+def train_loop(model: ConvModel,
                dataset: Dataset,
+               graph: dgl.DGLHeteroGraph,
                dataloaders: DataLoaders,
                loss_fn,
-               parameters,
-               environment,
+               parameters: Parameters,
+               environment: Environment,
                get_metrics=False,
-               graph=None,
-               bought_eids=None,
-               ground_truth_subtrain=None,
-               ground_truth_valid=None,
-               remove_already_bought=True,
                ):
     """
     Main function to train a GNN, using max margin loss on positive and negative examples.
@@ -81,10 +80,6 @@ def train_loop(model,
                 print(f"Edge batch {i} out of {dataloaders.num_batches_train}")
 
             input_features = blocks[0].srcdata['features']
-            # recency (TO BE CLEANED)
-            recency_scores = None
-            if parameters.use_recency:
-                recency_scores = pos_g.edata['recency']
 
             _, pos_score, neg_score = model(blocks,
                                             input_features,
@@ -162,13 +157,12 @@ def train_loop(model,
                                              )
 
                 train_precision_at_k = get_metrics_at_k(
-                    y,
-                    graph,
                     model,
+                    y,
                     node_ids,
-                    ground_truth_subtrain,
-                    parameters=parameters,
-                    environment=environment)
+                    dataset,
+                    parameters
+                )
 
                 # validation metrics
                 print('VALIDATION METRICS')
@@ -227,12 +221,8 @@ def train_loop(model,
 
     viz = {'train_loss_list': model.train_loss_list,
            'train_precision_list': model.train_precision_list,
-           'train_recall_list': model.train_recall_list,
-           'train_coverage_list': model.train_coverage_list,
            'val_loss_list': model.val_loss_list,
-           'val_precision_list': model.val_precision_list,
-           'val_recall_list': model.val_recall_list,
-           'val_coverage_list': model.val_coverage_list}
+           'val_precision_list': model.val_precision_list}
 
     print('Training completed.')
-    return model, viz, best_metrics  # model will already be to 'cuda' device?
+    return model, viz, best_metrics

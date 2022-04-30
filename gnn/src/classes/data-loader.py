@@ -86,12 +86,12 @@ class DataLoader:
             duplicates=fixed_params.duplicates,
         )
 
-        self.graph_schema = {('user',
+        self.graph_schema = {('customer',
                               'buys',
-                              'item'): list(zip(self.adjacency_dict['user_item_src'],
-                                                self.adjacency_dict['user_item_dst'])),
-                             ('item',
+                              'article'): list(zip(self.adjacency_dict['user_item_src'],
+                                                   self.adjacency_dict['user_item_dst'])),
+                             ('article',
                                  'bought-by',
-                                 'user'): list(zip(self.adjacency_dict['user_item_dst'],
+                                 'customer'): list(zip(self.adjacency_dict['user_item_dst'],
                                                    self.adjacency_dict['user_item_src'])),
                              }

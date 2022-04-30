@@ -1,15 +1,17 @@
 import torch
 from gnn.environment import Environment
 from gnn.parameters import Parameters
+from gnn.src.classes.dataset import Dataset
 
-from gnn.src.model import ConvModel
-from dgl.dataloading import DataLoader
+import dgl
+
+from gnn.src.model.conv_model import ConvModel
 
 
-def get_embeddings(graph,
+def get_embeddings(graph: dgl.DGLHeteroGraph,
                    trained_model: ConvModel,
-                   dataloader: DataLoader,
-                   num_batches,
+                   dataloader: dgl.dataloading.DataLoader,
+                   num_batches: int,
                    environment: Environment,
                    parameters: Parameters):
     """
@@ -47,20 +49,19 @@ def get_embeddings(graph,
         batch_index += 1
         if batch_index % 10 == 0:
             print(
-                "Computing embeddings: Batch {} out of {}".format(
-                    batch_index, num_batches))
+                f"Computing embeddings: Batch {batch_index} out of {num_batches}")
 
         if environment.cuda:
             blocks = [b.to(environment.device) for b in blocks]
         input_features = blocks[0].srcdata['features']
 
         if parameters.embedding_layer:
-            input_features['user'] = trained_model.user_embed(
-                input_features['user'])
-            input_features['item'] = trained_model.item_embed(
-                input_features['item'])
+            input_features['customer'] = trained_model.user_embed(
+                input_features['customer'])
+            input_features['article'] = trained_model.item_embed(
+                input_features['article'])
 
-        h = trained_model.get_repr(blocks, input_features)
+        h = trained_model.get_embeddings(blocks, input_features)
 
         for ntype in h.keys():
             y[ntype][output_nodes[ntype]] = h[ntype]
