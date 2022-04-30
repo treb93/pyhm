@@ -12,6 +12,7 @@ from dgl.nn.pytorch import SAGEConv
 from parameters import Parameters
 
 
+
 class ConvLayer(nn.Module):
     """
     1 layer of message passing & aggregation, specific to an edge type.
@@ -47,9 +48,7 @@ class ConvLayer(nn.Module):
     def __init__(self,
                  in_feats: Tuple[int, int],
                  out_feats: int,
-                 dropout: float,
-                 aggregator_type: str,
-                 norm,
+                 parameters: Parameters
                  ):
         """
         Initialize the layer with parameters.
@@ -84,13 +83,13 @@ class ConvLayer(nn.Module):
         super().__init__()
         self._in_neigh_feats, self._in_self_feats = in_feats
         self._out_feats = out_feats
-        self._aggre_type = aggregator_type
-        self.dropout_fn = nn.Dropout(dropout)
-        self.norm = norm
+        self._aggre_type = parameters.aggregator_type
+        self.dropout_fn = nn.Dropout(parameters.dropout)
+        self.norm = parameters.norm
         self.fc_self = nn.Linear(self._in_self_feats, out_feats, bias=False)
         self.fc_neigh = nn.Linear(self._in_neigh_feats, out_feats, bias=False)
         # self.fc_edge = nn.Linear(1, 1, bias=True)  # Projecting recency days
-        if aggregator_type in [
+        if parameters.aggregator_type in [
             'pool_nn',
             'pool_nn_edge',
             'mean_nn',
@@ -99,7 +98,7 @@ class ConvLayer(nn.Module):
                 self._in_neigh_feats,
                 self._in_neigh_feats,
                 bias=False)
-        if aggregator_type == 'lstm':
+        if parameters.aggregator_type == 'lstm':
             self.lstm = nn.LSTM(
                 self._in_neigh_feats,
                 self._in_neigh_feats,

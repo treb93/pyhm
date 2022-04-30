@@ -46,29 +46,28 @@ def create_graph(dataset: Dataset
         )}
 
     graph = dgl.heterograph(
-        graph_data
+        graph_data,
+        device = th.device('cpu')
     )
 
-print('Version 2')
+    print('Version 3')
     # Add features.
     columns_to_drop = ['customer_id', 'customer_nid']
     graph.nodes['customer'].data['features'] = th.tensor(
-        dataset.customers[['age_around_15']].drop(
+        dataset.customers.drop(
             columns=columns_to_drop,
             axis=1).values,
         dtype=th.int32)
 
     columns_to_drop = ['article_id', 'article_nid']
-    graph.nodes['articles'].data['features'] = th.tensor(
-        dataset.articles[['age_around_15']].drop(
+    graph.nodes['article'].data['features'] = th.tensor(
+        dataset.articles.drop(
             columns=columns_to_drop,
             axis=1).values,
         dtype=th.int32)
 
     columns_to_drop = [
-        'customer_id',
         'customer_nid',
-        'article_id',
         'article_nid']
     
     graph.edges['buys'].data['features'] = th.tensor(

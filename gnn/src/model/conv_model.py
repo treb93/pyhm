@@ -55,16 +55,17 @@ class ConvModel(nn.Module):
 
         self.layers = nn.ModuleList()
 
-        edges = ['buys', 'is-bought-by']
 
         # input layer
         if not parameters.embedding_layer:
             self.layers.append(
                 dglnn.HeteroGraphConv(
-                    {g.canonical_etypes[etype][1]: ConvLayer((dim_dict[g.canonical_etypes[etype][0]], dim_dict[g.canonical_etypes[etype][2]] + dim_dict['edge']), dim_dict['hidden'], parameters.dropout,
-                                                             parameters.aggregator_type, parameters.norm)
-                     for etype in edges},
-                    aggregate=parameters.aggregator_hetero)
+                    {
+                        'buys': ConvLayer((dim_dict['customer'], dim_dict['article'] + dim_dict['edge']), dim_dict['hidden'], parameters),
+                        'is-bought-by': ConvLayer((dim_dict['article'], dim_dict['customer'] + dim_dict['edge']), dim_dict['hidden'], parameters)
+                    },
+                    aggregate=parameters.aggregator_hetero
+                )
             )
 
         # hidden layers
@@ -72,27 +73,23 @@ class ConvModel(nn.Module):
             self.layers.append(
                 dglnn.HeteroGraphConv(
                     {
-                        g.canonical_etypes[etype][1]: ConvLayer(
-                            (dim_dict['hidden'],
-                             dim_dict['hidden'] + dim_dict['edge']),
-                            dim_dict['hidden'],
-                            parameters.dropout,
-                            parameters.aggregator_type,
-                            parameters.norm) for etype in edges},
-                    aggregate=parameters.aggregator_hetero))
+                        'buys': ConvLayer((dim_dict['hidden'], dim_dict['hidden'] + dim_dict['edge']), dim_dict['hidden'], parameters),
+                        'is-bought-by': ConvLayer((dim_dict['hidden'], dim_dict['hidden'] + dim_dict['edge']), dim_dict['hidden'], parameters)
+                    },
+                    aggregate=parameters.aggregator_hetero
+                )
+            )
 
         # output layer
         self.layers.append(
             dglnn.HeteroGraphConv(
                 {
-                    g.canonical_etypes[etype][1]: ConvLayer(
-                        (dim_dict['hidden'],
-                         dim_dict['hidden'] + dim_dict['edge']),
-                        dim_dict['out'],
-                        parameters.dropout,
-                        parameters.aggregator_type,
-                        parameters.norm) for etype in edges},
-                aggregate=parameters.aggregator_hetero))
+                        'buys': ConvLayer((dim_dict['hidden'], dim_dict['hidden'] + dim_dict['edge']), dim_dict['out'], parameters),
+                        'is-bought-by': ConvLayer((dim_dict['hidden'], dim_dict['hidden'] + dim_dict['edge']), dim_dict['out'], parameters)
+                },
+                aggregate=parameters.aggregator_hetero
+                )
+            )
 
         if parameters.prediction_layer == 'cos':
             self.pred_fn = CosinePrediction()
