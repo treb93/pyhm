@@ -34,7 +34,7 @@ class Parameters():
         self.out_dim = 128
         self.embedding_layer = True
         self.lr = 0.00017985194246308484
-        self.n_layers = 5
+        self.n_layers = 4
         self.neg_sample_size = 300
         self.norm = True
         self.use_popularity = True

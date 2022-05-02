@@ -11,18 +11,12 @@ from src.classes.graphs import Graphs
 from parameters import Parameters
 from src.classes.dataloaders import DataLoaders
 from src.classes.dataset import Dataset
-from src.get_embeddings import get_embeddings
 from src.max_margin_loss import max_margin_loss
 from src.model.conv_model import ConvModel
 from src.train_loop import train_loop
 
-from src.utils_data import assign_graph_features
-from src.utils import read_data, save_txt, save_outputs
+from src.utils import save_txt, save_outputs
 from src.utils_vizualization import plot_train_loss
-from src.metrics import (create_already_bought, create_ground_truth,
-                         get_metrics_at_k, get_recommendation_tensor)
-from src.evaluation import explore_recs, explore_sports, check_coverage
-from presplit import presplit_data
 
 from logging_config import get_logger
 
@@ -80,10 +74,11 @@ def launch_training(
     # Initialize model
     model = ConvModel(dim_dict, parameters)
 
-    #model.load_state_dict(
-    #    torch.load(
-    #        "models/FULL_Recall_3.29_2022-04-1823:30.pth",
-    #        map_location=environment.device))
+    if(environment.model_path):
+        print("Import model.")
+        model.load_state_dict(
+            torch.load(environment.model_path)
+        )
 
     print("Initialize Dataloaders.")
     dataloaders = DataLoaders(graphs, dataset, parameters, environment)
@@ -164,20 +159,13 @@ def main(
     parameters = Parameters({
         'aggregator_hetero': 'mean',
         'aggregator_type': 'mean',
-        'clicks_sample': 0.3,
         'delta': 0.266,
-        'dropout': 0.01,
-        'hidden_dim': 256,
-        'out_dim': 128,
         'embedding_layer': True,
         #'lr': 0.00017985194246308484,
-        'lr': 0.01,
-        'n_layers': 4,
-        'norm': True,
-        'use_popularity': True,
-        'prediction_layer': 'cos',
-        'use_recency': True,
-        'num_workers': 4 if environment.cuda else 0
+        'lr': 0.001,
+        'neg_sample_size': 100,
+        'edge_batch_size': 10000,
+        'batches_per_embedding': 1
     })
 
     launch_training(

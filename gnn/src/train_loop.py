@@ -11,10 +11,9 @@ from src.classes.graphs import Graphs
 from parameters import Parameters
 from src.classes.dataloaders import DataLoaders
 from src.classes.dataset import Dataset
-from src.get_embeddings import get_embeddings
 from src.model.conv_model import ConvModel
 
-from src.metrics import get_metrics_at_k, get_recommendation_tensor, precision_at_k
+from src.metrics import get_recommendation_tensor, precision_at_k
 from src.utils import save_txt
 
 
@@ -68,6 +67,12 @@ def train_loop(model: ConvModel,
 
     # TRAINING
     print('Starting training.')
+    
+    embeddings = model.get_embeddings(graphs.history_graph, {
+                    'article': graphs.history_graph.nodes['article'].data['features'],
+                    'customer': graphs.history_graph.nodes['customer'].data['features'],
+                })
+    
     for epoch in range(parameters.num_epochs):
         start_time = time.time()
         model.train()  # Because if not, after eval, dropout would be still be inactive
@@ -83,7 +88,7 @@ def train_loop(model: ConvModel,
             i += 1
             
             # Process embeddings and initialize score tensors.
-            if (i % parameters.batches_per_embedding == 1) or (i == dataloaders.num_batches_train):
+            if (i % parameters.batches_per_embedding == parameters.batches_per_embedding - 1) or (i == dataloaders.num_batches_train):
                 print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Get embeddings...                   ", end ="")
                 
                 if i > 1:
@@ -109,7 +114,7 @@ def train_loop(model: ConvModel,
                     
                     
             # Proceed to gradient descent. 
-            if (i % parameters.batches_per_embedding == 1) or (i == dataloaders.num_batches_train):
+            if (i % parameters.batches_per_embedding == parameters.batches_per_embedding - 1) or (i == dataloaders.num_batches_train):
                 print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Calculate loss...                   ", end ="")
 
                 loss = loss_fn(pos_score,
@@ -135,7 +140,7 @@ def train_loop(model: ConvModel,
         model.train_loss_list.append(train_avg_loss)
 
         print("\r Process valid batches...              ", end="")
-        if get_metrics and epoch % 2 == 0:
+        if get_metrics:
             model.eval()
             with torch.no_grad():
                 total_loss = 0

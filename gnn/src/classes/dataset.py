@@ -62,6 +62,12 @@ class Dataset():
         # Load customer and article features.
         customers = pd.read_pickle(environment.customers_path)
         articles = pd.read_pickle(environment.articles_path)
+        
+        # Remove a defined amoutn of customers from the set.
+        if parameters.remove:
+            customers = customers.sample(frac = 1 - parameters.remove)
+            customers_id_list = customers['customer_id'].unique()
+            transactions = transactions[transactions['customer_id'].isin(customers_id_list)]
 
         if parameters.embedding_on_full_set == True:
             purchase_history = transactions[transactions['week_number']

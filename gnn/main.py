@@ -12,34 +12,21 @@ from skopt.utils import use_named_args
 from skopt.callbacks import CheckpointSaver
 from skopt import load
 import torch
+from gnn.environment import Environment
+from gnn.src.classes.dataset import Dataset
 from parameters import Parameters
-from src.generate_dataloaders import generate_dataloaders
 from src.max_margin_loss import max_margin_loss
 from src.model.conv_model import ConvModel
 from src.train_valid_split import train_valid_split
 
-from src.builder import create_graph, import_features
-from src.metrics import (create_already_bought, create_ground_truth,
-                         get_metrics_at_k, get_recommendation_tensor)
-from src.train.run import train_loop, get_embeddings
 from src.evaluation import explore_recs, explore_sports, check_coverage
 from src.utils import save_txt, save_outputs, get_last_checkpoint
-from src.utils_data import DataLoader, FixedParameters, DataPaths, assign_graph_features
 from src.utils_vizualization import plot_train_loss
 import inference_hp
 
 from logging_config import get_logger
 
 log = get_logger(__name__)
-
-global cuda
-
-cuda = False
-device = torch.device('cuda')
-if not cuda:
-    num_workers = 0
-else:
-    num_workers = 4
 
 
 def train(data, fixed_params, data_paths,
@@ -578,22 +565,20 @@ def fitness(**params):
 @click.option('--patience', default=3, help='Patience for early stopping')
 @click.option('--edge_batch_size', default=2048,
               help='Number of edges in a train / validation batch')
-@click.option('--item_id_type', default='SPECIFIC ITEM IDENTIFIER',
-              help='Identifier for the item. This code allows 2 types: SPECIFIC (e.g. item SKU'
-                   'or GENERAL (e.g. item family)')
-@click.option('--duplicates', default='keep_all',
-              help='How to handle duplicates. Choices: keep_all, keep_last, count_occurrence')
 def main(from_beginning, verbose, visualization, check_embedding,
-         remove, num_epochs, start_epoch, patience, edge_batch_size,
-         item_id_type, duplicates):
+         remove, num_epochs, start_epoch, patience, edge_batch_size):
     """
     Main function that loads data and parameters, then runs hyperparameter loop with the fitness function.
 
     """
+    global searchable_params
+    
     if verbose:
         log.setLevel(logging.DEBUG)
     else:
         log.setLevel(logging.INFO)
+
+    environment = Environment()
 
     parameters = Parameters()
     parameters.update({
@@ -602,7 +587,6 @@ def main(from_beginning, verbose, visualization, check_embedding,
         patience: patience,
         edge_batch_size: edge_batch_size,
         remove: remove,
-        duplicates: duplicates
     })
 
     checkpoint_saver = CheckpointSaver(
@@ -610,16 +594,17 @@ def main(from_beginning, verbose, visualization, check_embedding,
         compress=9
     )
 
-    data = DataLoader(data_paths, fixed_params)
+    dataset = Dataset(environment, parameters)
 
     global fitness_params
     fitness_params = {
-        'data': data,
-        'fixed_params': fixed_params,
-        'data_paths': data_paths,
+        'dataset': dataset,
+        'environment': environment,
+        'parameters': parameters,
         'visualization': visualization,
         'check_embedding': check_embedding,
     }
+    
     if from_beginning:
         search_result = gp_minimize(
             func=fitness,
@@ -652,7 +637,8 @@ def main(from_beginning, verbose, visualization, check_embedding,
             callback=[checkpoint_saver],
             random_state=46
         )
-    # log.info(search_result)
+        
+    log.info(search_result)
 
 
 if __name__ == '__main__':
