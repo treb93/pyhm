@@ -4,21 +4,23 @@ import datetime
 import time
 
 import dgl
+import numpy as np
 import torch
 from environment import Environment
+from src.classes.graphs import Graphs
 from parameters import Parameters
 from src.classes.dataloaders import DataLoaders
 from src.classes.dataset import Dataset
 from src.get_embeddings import get_embeddings
 from src.model.conv_model import ConvModel
 
-from src.metrics import get_metrics_at_k
+from src.metrics import get_metrics_at_k, get_recommendation_tensor, precision_at_k
 from src.utils import save_txt
 
 
 def train_loop(model: ConvModel,
                dataset: Dataset,
-               graph: dgl.DGLHeteroGraph,
+               graphs: Graphs,
                dataloaders: DataLoaders,
                loss_fn,
                parameters: Parameters,
@@ -59,175 +61,211 @@ def train_loop(model: ConvModel,
     opt = parameters.optimizer(model.parameters(),
                                lr=parameters.lr)
 
+    # Assign prediction layer to GPU.
+    model.prediction_fn.to(environment.device)
+
+    print(parameters.start_epoch, parameters.num_epochs)
+
     # TRAINING
     print('Starting training.')
-    for epoch in range(parameters.start_epoch, parameters.num_epochs):
+    for epoch in range(parameters.num_epochs):
         start_time = time.time()
-        print('TRAINING LOSS')
         model.train()  # Because if not, after eval, dropout would be still be inactive
         i = 0
         total_loss = 0
+        
+        opt.zero_grad()
+
+        pos_score_cat = torch.tensor([]).to(environment.device)
+        neg_score_cat = torch.tensor([]).to(environment.device)
+                
         for _, pos_g, neg_g, blocks in dataloaders.dataloader_train_loss:
-            opt.zero_grad()
-
-            if environment.cuda:
-                blocks = [b.to(environment.device) for b in blocks]
-                pos_g = pos_g.to(environment.device)
-                neg_g = neg_g.to(environment.device)
-
             i += 1
-            if i % 10 == 0:
-                print(f"Edge batch {i} out of {dataloaders.num_batches_train}")
+            if i > 5:
+                break
+            
+            # Process embeddings and initialize score tensors.
+            if (i % parameters.batches_per_embedding == 1) or (i == dataloaders.num_batches_train):
+                print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Get embeddings...                   ", end ="")
+                
+                embeddings = model.get_embeddings(graphs.history_graph, {
+                    'article': graphs.history_graph.nodes['article'].data['features'],
+                    'customer': graphs.history_graph.nodes['customer'].data['features'],
+                })
+                
+                graphs.prediction_graph.nodes['article'].data['h'] = embeddings['article'][0:graphs.prediction_graph.num_nodes('article')]
+                graphs.prediction_graph.nodes['customer'].data['h'] = embeddings['customer'][0:graphs.prediction_graph.num_nodes('customer')]
+                    
+            
+            
+            print(f"\rProcess train batch {i} / {dataloaders.num_batches_train}                   ", end ="")
 
-            input_features = blocks[0].srcdata['features']
+            pos_g.to(environment.device)
+            neg_g.to(environment.device)
 
-            _, pos_score, neg_score = model(blocks,
-                                            input_features,
-                                            pos_g,
-                                            neg_g,
-                                            parameters.embedding_layer,
-                                            )
-            loss = loss_fn(pos_score,
-                           neg_score,
-                           parameters=parameters,
-                           environment=environment
-                           )
+            pos_score, neg_score = model(pos_g, neg_g, embeddings)
 
-            if epoch > 0:  # For the epoch 0, no training (just report loss)
+            pos_score_cat = torch.cat([pos_score_cat, pos_score.to(environment.device)])
+            neg_score_cat = torch.cat([neg_score_cat, neg_score.to(environment.device)])
+                    
+                    
+            # Proceed to gradient descent. 
+            if (i % parameters.batches_per_embedding == 1) or (i == dataloaders.num_batches_train):
+                print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Calculate loss...                   ", end ="")
+                loss = loss_fn(pos_score,
+                                neg_score,
+                                parameters=parameters,
+                                environment=environment
+                                )
+
+                total_loss += loss.item()
+                
                 loss.backward()
                 opt.step()
-            total_loss += loss.item()
-
-            if epoch == 0 and i > 10:
-                break  # For the epoch 0, report loss on only subset
-
+                
+                pos_score_cat = torch.tensor([]).to(environment.device)
+                neg_score_cat = torch.tensor([]).to(environment.device)
+            
+        
         train_avg_loss = total_loss / i
         model.train_loss_list.append(train_avg_loss)
 
-        print('VALIDATION LOSS')
-        model.eval()
-        with torch.no_grad():
-            total_loss = 0
-            i = 0
+        print("\r Process valid batches...              ", end="")
+        if get_metrics and epoch % 2 == 0:
+            model.eval()
+            with torch.no_grad():
+                total_loss = 0
+                i = 0
 
-            for _, pos_g, neg_g, blocks in dataloaders.dataloader_valid_loss:
-                i += 1
-                if i % 10 == 0:
-                    print(
-                        f"Edge batch {i} out of {dataloaders.num_batches_valid}")
+        
+                for _, pos_g, neg_g, blocks in dataloaders.dataloader_valid_loss:
+                    i += 1
+                    print(f"\rProcess valid batch {i} / {dataloaders.num_batches_train}             ", end ="")
 
-                if environment.cuda:
-                    blocks = [b.to(environment.device) for b in blocks]
-                    pos_g = pos_g.to(environment.device)
-                    neg_g = neg_g.to(environment.device)
+                    pos_g.to(environment.device)
+                    neg_g.to(environment.device)
+                    
+                    pos_score = model.prediction_fn(pos_g).to(environment.device)
+                    
+                    neg_g.nodes['article'].data['h'] = graphs.prediction_graph.nodes['article'].data['h'][neg_g.nodes['article'].data['_ID'].long()]
+                    neg_g.nodes['customer'].data['h'] = graphs.prediction_graph.nodes['customer'].data['h'][neg_g.nodes['customer'].data['_ID'].long()]
+                    
+                    neg_score = model.prediction_fn(neg_g).to(environment.device)
 
-                input_features = blocks[0].srcdata['features']
-                _, pos_score, neg_score = model(blocks,
-                                                input_features,
-                                                pos_g,
-                                                neg_g,
-                                                parameters.embedding_layer,
-                                                )
+                    val_loss = loss_fn(pos_score,
+                                    neg_score,
+                                    parameters=parameters,
+                                    environment=environment
+                                    )
+                    total_loss += val_loss.item()
 
-                val_loss = loss_fn(pos_score,
-                                   neg_score,
-                                   parameters=parameters,
-                                   environment=environment
-                                   )
-                total_loss += val_loss.item()
-                print(val_loss.item())
-
-            val_avg_loss = total_loss / i
-            model.val_loss_list.append(val_avg_loss)
+                valid_avg_loss = total_loss / i
+                model.val_loss_list.append(valid_avg_loss)
 
         ############
         # METRICS PER EPOCH
-        if get_metrics and epoch % 20 == 1:
+        if get_metrics and epoch % 50 == 0:
+            
             model.eval()
             with torch.no_grad():
-                # training metrics
-                print('TRAINING METRICS')
                 
-                batch_index = 0
-                train_precision_at_k = 0
-                for input_nodes, output_nodes, blocks in dataloaders.dataloader_train_metrics:
-                    batch_index += 1
-                    if batch_index % 10 == 0:
-                        print(
-                            f"Computing embeddings: Batch {batch_index}")
-            
-                    y, node_ids = get_embeddings(
-                                                graph = graph,
-                                                model = model,
-                                                output_nodes = output_nodes, 
-                                                blocks = blocks,
-                                                parameters=parameters,
-                                                environment=environment
-                                                )
+                customers_per_batch = 200
+                current_index = 0
+                length = len(dataset.customers_nid_train)
 
-                    train_precision_at_k += get_metrics_at_k(
-                        model,
-                        y,
-                        node_ids,
-                        dataset,
-                        parameters
-                    )
+                precision_list = np.array([])
+                recommendation_chunks = []
+
+                while current_index < length :
                     
-                train_precision_at_k /= batch_index
+                    customer_nids = dataset.customers_nid_train[current_index: current_index + customers_per_batch]
+                    
+                    print(f"\rProcessing train recommendations for customers {current_index} - {current_index + customers_per_batch}            ", end = "")
+                    new_recommendations = get_recommendation_tensor({
+                        'article': graphs.prediction_graph.nodes['article'].data['h'].to(environment.device),
+                        'customer': graphs.prediction_graph.nodes['customer'].data['h'][customer_nids].to(environment.device),
+                    }, parameters, environment)
+                    
+                    recommendation_chunks.append(new_recommendations)
+
+                    customer_nids = range(current_index, current_index + customers_per_batch)
+
+
+                    if current_index % 5000 == 0 or current_index + customers_per_batch < length:
+                        recommendations = torch.cat(recommendation_chunks, dim = 0)
+                        
+                        precision = precision_at_k(recommendations, customer_nids, dataset)
+                        precision_list = np.append(precision_list, precision)
+                        
+                        recommendation_chunks = []
+                    
+                    current_index += customers_per_batch
+                    
+                train_precision_at_k = np.mean(precision_list)
+
 
                 # validation metrics
-                print('VALIDATION METRICS')
                 
                 batch_index = 0
-                val_precision_at_k = 0
+                valid_precision_at_k = 0
                 
-                for input_nodes, output_nodes, blocks in dataloaders.dataloader_valid_metrics:
-                    y, node_ids = get_embeddings(
-                                                    graph = graph,
-                                                    model = model,
-                                                    output_nodes = output_nodes, 
-                                                    blocks = blocks,
-                                                    parameters=parameters,
-                                                    environment=environment
-                                                )
+                customers_per_batch = 200
+                current_index = 0
+                length = len(dataset.customers_nid_valid)
 
-                    val_precision_at_k = get_metrics_at_k(
-                        model,
-                        y,
-                        node_ids,
-                        dataset,
-                        parameters
-                    )
+                precision_list = np.array([])
+                recommendation_chunks = []
+
+                while current_index < length :
                     
-                val_precision_at_k /= batch_index
+                    customer_nids = dataset.customers_nid_valid[current_index: current_index + customers_per_batch]
+                    
+                    print(f"\rProcessing valid recommendations for customers {current_index} - {current_index + customers_per_batch}                     ", end = "")
+                    new_recommendations = get_recommendation_tensor({
+                        'article': graphs.prediction_graph.nodes['article'].data['h'].to(environment.device),
+                        'customer': graphs.prediction_graph.nodes['customer'].data['h'][customer_nids].to(environment.device),
+                    }, parameters, environment)
+                    
+                    recommendation_chunks.append(new_recommendations)
+
+                    if current_index % 5000 == 0:
+                        recommendations = torch.cat(recommendation_chunks, dim = 0)
+                        
+                        precision = precision_at_k(recommendations, customer_nids, dataset)
+                        precision_list = np.append(precision_list, precision)
+                        
+                        recommendation_chunks = []
+                    
+                    current_index += customers_per_batch
+                    
+                valid_precision_at_k = np.mean(precision_list)
                 
-                sentence = f"""Epoch {epoch: 05d} || TRAINING Loss {train_avg_loss: .5f} | Precision at k {train_precision_at_k * 100: .3f}%
-                || VALIDATION Loss {val_avg_loss: .5f} | Precision {val_precision_at_k * 100: .3f}% """
+                sentence = f"\rEpoch {parameters.start_epoch + epoch:05d} || TRAINING Loss {train_avg_loss:.5f} | Precision at k {train_precision_at_k * 100:.3f}% || VALIDATION Loss {valid_avg_loss:.5f} | Precision at k {valid_precision_at_k * 100:.3f}% "
                 print(sentence)
                 save_txt(sentence, environment.result_filepath, mode='a')
-
+        
                 model.train_precision_list.append(train_precision_at_k * 100)
-                model.val_precision_list.append(val_precision_at_k * 100)
+                model.val_precision_list.append(valid_precision_at_k * 100)
 
                 # Visualization of best metric
-                if val_precision_at_k > max_metric:
-                    max_metric = val_precision_at_k
+                if valid_precision_at_k > max_metric:
+                    max_metric = valid_precision_at_k
                     best_metrics = {
-                        'precision': val_precision_at_k,
+                        'precision': valid_precision_at_k,
                     }
 
-            print("Save model.")
-            date = str(datetime.datetime.now())[:-10].replace(' ', '')
-            torch.save(
-                model.state_dict(),
-                f'models/FULL_Precision_{val_precision_at_k * 100:.2f}_{date}.pth')
+            #print("Save model.")
+            #date = str(datetime.datetime.now())[:-10].replace(' ', '')
+            #torch.save(
+            #    model.state_dict(),
+            #    f'models/FULL_Precision_{val_precision_at_k * 100:.2f}_{date}.pth')
         else:
-            sentence = "Epoch {epoch:05d} | Training Loss {train_avg_loss:.5f} | Validation Loss {val_avg_loss:.5f} | "
+            sentence = f"Epoch {epoch:05d} | Training Loss {train_avg_loss:.5f} | Validation Loss {valid_avg_loss:.5f} | "
             print(sentence)
             save_txt(sentence, environment.result_filepath, mode='a')
 
-        if val_avg_loss < min_loss:
-            min_loss = val_avg_loss
+        if valid_avg_loss < min_loss:
+            min_loss = valid_avg_loss
             patience_counter = 0
         else:
             patience_counter += 1

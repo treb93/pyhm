@@ -11,3 +11,5 @@ class Environment:
 
         self.cuda = torch.cuda.is_available()
         self.device = torch.device('cuda') if self.cuda else torch.device('cpu')
+        #self.device = torch.device('cpu')
+

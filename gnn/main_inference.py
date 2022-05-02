@@ -12,7 +12,7 @@ from src.model.conv_model import ConvModel
 from src.utils_data import DataPaths, DataLoader, FixedParameters, assign_graph_features
 from src.utils_inference import read_graph, fetch_uids, postprocess_recs
 from src.train.run import get_embeddings
-from src.metrics import get_recommandation_tensor, create_already_bought
+from src.metrics import get_recommendation_tensor, create_already_bought
 from src.utils import read_data
 
 cuda = torch.cuda.is_available()
@@ -157,7 +157,7 @@ def inference_ondemand(user_ids,  # List or 'all'
                                               device,
                                               params['embedding_layer'],
                                               )
-        recs = get_recommandation_tensor(
+        recs = get_recommendation_tensor(
             embeddings,
             node_ids,
             trained_model,

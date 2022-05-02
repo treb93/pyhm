@@ -143,9 +143,14 @@ class ConvLayer(nn.Module):
 
         if self._aggre_type == 'mean':
             graph.srcdata['h'] = h_neigh
-            graph.update_all([fn.u_mul_e('h', 'weight', 'm_n'), fn.copy_e('e', 'm_e')], 
-             [fn.mean('m_n', 'neigh'), fn.mean('m_e', 'edge')])
-            h_neigh = torch.cat(graph.dstdata['neigh'], graph.dstdata['edge'])
+            graph.update_all(fn.copy_e('features', 'm_e'), fn.mean('m_e', 'edge'))
+            graph.update_all(
+                fn.u_mul_e('h', 'weight', 'm_n'), 
+                #fn.copy_u('h', 'm_n'), 
+                fn.mean('m_n', 'neigh')
+            )
+            #graph.update_all(fn.copy_u('h', 'm_n'), fn.mean('m_n', 'neigh'))
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
         elif self._aggre_type == 'mean_nn':
             graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
@@ -241,6 +246,7 @@ class ConvLayer(nn.Module):
                 'Aggregator type {} not recognized.'.format(
                     self._aggre_type))
 
+
         z = self.fc_self(h_self) + self.fc_neigh(h_neigh)
         z = F.relu(z)
 
@@ -251,5 +257,7 @@ class ConvLayer(nn.Module):
                                  torch.tensor(1.).to(z_norm),
                                  z_norm)
             z = z / z_norm
+
+        # print(z.shape)
 
         return z

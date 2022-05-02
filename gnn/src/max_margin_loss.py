@@ -1,12 +1,15 @@
 import torch
 import torch.nn as nn
 
+from environment import Environment
+from parameters import Parameters
 
-def max_margin_loss(pos_score,
-                    neg_score,
-                    parameters,
-                    environment
-                    ):
+
+def max_margin_loss(pos_score: torch.tensor,
+                    neg_score: torch.tensor,
+                    parameters: Parameters,
+                    environment: Environment
+                    ) -> torch.Tensor:
     """
     Simple max margin loss.
 
@@ -22,18 +25,16 @@ def max_margin_loss(pos_score,
         Number of negative examples to generate for each positive example.
         See main.SearchableHyperparameters for more details.
     """
-    all_scores = torch.empty(0)
-    if environment.cuda:
-        all_scores = all_scores.to(environment.device)
-    for etype in pos_score.keys():
-        neg_score_tensor = neg_score[etype]
-        pos_score_tensor = pos_score[etype]
-        neg_score_tensor = neg_score_tensor.reshape(
-            -1, parameters.neg_sample_size)
+    all_scores = torch.empty(0).to(environment.device)
+        
+    neg_score = neg_score.reshape(
+        -1, parameters.neg_sample_size)
 
-        scores = neg_score_tensor + parameters.delta - pos_score_tensor
-        relu = nn.ReLU()
-        scores = relu(scores)
-
-        all_scores = torch.cat((all_scores, scores), 0)
+    scores = neg_score + parameters.delta - pos_score
+    scores = scores.to(environment.device)
+    
+    relu = nn.ReLU()
+    scores = relu(scores)
+    
+    all_scores = torch.cat((all_scores, scores), 0)
     return torch.mean(all_scores)

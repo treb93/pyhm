@@ -1,3 +1,4 @@
+from environment import Environment
 from parameters import Parameters
 from src.classes.dataset import Dataset
 from src.model.conv_model import ConvModel
@@ -35,55 +36,52 @@ def create_already_bought(g: DGLHeteroGraph, bought_eids, etype='buys'):
     return already_bought_dict
 
 
-def get_recommandation_tensor(y,
-                              node_ids,
-                              model: ConvModel,
-                              parameters: Parameters
+def get_recommendation_tensor(y,
+                              parameters: Parameters,
+                              environment: Environment
                               ) -> torch.tensor:
     """
     Computes K recommendations for all users, given hidden states.
 
     returns recommandations(torch.tensor): A tensor of shape (customers, parameters.k)
     """
-    print(
-        f"Computing recommendations on {len(node_ids['customer'])} users, for {len(node_ids['article'])} items")
 
     if parameters.prediction_layer == 'cos':
 
-        cos = nn.CosineSimilarity(dim=1, eps=1e-6)
+        cos = nn.CosineSimilarity(dim=1, eps=1e-6).to(environment.device)
         similarities = cos(
-            y['customer'].reshape(-1, parameters.embed_dim, 1),
-            y['article'].reshape(1, parameters.embed_dim, -1)
+            y['customer'].reshape(-1, parameters.out_dim, 1),
+            y['article'].reshape(1, parameters.out_dim, -1)
         )
 
         # Get the indexes of the best score
         recommandations = torch.argsort(
-            similarities, dim=1, descending=True)[0:12]
+            similarities, dim=1, descending=True)[:, 0:12].int()
 
         # Replace the indexes by real article ids.
-        recommandations = node_ids['article'][recommandations[:]]
+        #recommandations = node_ids['article'][recommandations[:]]
 
-    elif parameters.prediction_layer == 'nn':
-        # TODO: Cette boucle coûte très cher. Voir si on peut les faire tous
-        # d'un coup
-        for user_id in node_ids['customer']:
-            counter = counter + 1
-            print(f"Customer n°{counter}")
-            user_emb = y['customer'][user_id]
-
-            user_emb_rpt = torch.cat(
-                len(node_ids['article']) * [user_emb]).reshape(-1, parameters.embed_dim)
-
-            cat_embed = torch.cat((user_emb_rpt, y['article']), 1)
-            ratings = model.pred_fn.layer_nn(cat_embed)
-
-            ratings_formatted = ratings.cpu().detach(
-            ).numpy().reshape(len(node_ids['article']),)
-
-            order = node_ids['customer'][np.argsort(-ratings_formatted)]
-
-            rec = order[:parameters.k]
-            recommandations[user_id] = rec
+    #elif parameters.prediction_layer == 'nn':
+    #    # TODO: Cette boucle coûte très cher. Voir si on peut les faire tous
+    #    # d'un coup
+    #    for user_id in node_ids['customer']:
+    #        counter = counter + 1
+    #        print(f"Customer n°{counter}")
+    #        user_emb = y['customer'][user_id]
+#
+    #        user_emb_rpt = torch.cat(
+    #            len(node_ids['article']) * [user_emb]).reshape(-1, parameters.embed_dim)
+#
+    #        cat_embed = torch.cat((user_emb_rpt, y['article']), 1)
+    #        ratings = model.predict.layer_nn(cat_embed)
+#
+    #        ratings_formatted = ratings.cpu().detach(
+    #        ).numpy().reshape(len(node_ids['article']),)
+#
+    #        order = node_ids['customer'][np.argsort(-ratings_formatted)]
+#
+    #        rec = order[:parameters.k]
+    #        recommandations[user_id] = rec
     else:
         raise KeyError(
             f'Prediction function {parameters.prediction_layer} not recognized.')
@@ -93,7 +91,7 @@ def get_recommandation_tensor(y,
 
 def precision_at_k(
         recommendations: torch.tensor,
-        node_ids,
+        customer_nids: torch.tensor,
         dataset: Dataset) -> float:
     """
     Given the recommendations and the purchase list, computes precision, recall & coverage.
@@ -101,22 +99,26 @@ def precision_at_k(
 
     # Builds a dataset for having both purchase list and prediction list aside.
     score_dataframe = pd.concat([
-        pd.Series(node_ids).rename('node_ids'),
+        pd.Series(customer_nids).rename('customer_nid'),
         pd.Series(recommendations.tolist()).rename('prediction')
     ], axis=1)
+    
+    score_dataframe['prediction'] = score_dataframe['prediction'].fillna("").apply(list)
 
     score_dataframe = score_dataframe.merge(
-        dataset.purchased_list, on='customer_nid', how='left')
+        dataset._purchased_list, on='customer_nid', how='left')
+    
+    score_dataframe['prediction_length'] = score_dataframe['prediction'].apply(lambda x: len(x) if x else 0)
+
+    score_dataframe = score_dataframe[(score_dataframe['prediction_length'] > 0) & (score_dataframe['length'] > 0)]
 
     precision = score_dataframe.apply(
         lambda x: np.sum(
-            np.fromiter((
                 np.where(
-                    article_nid in x['articles'],
+                    x['prediction'][i] in x['articles'],
                     1,
                     0
-                ) for article_nid in min(len(x['prediction'], x['length']))
-            ), float
+                ) for i in range(int(min(len(x['prediction']), x['length']))
             )
         ) / min(len(x['prediction']), x['length']), axis=1)
 
@@ -132,7 +134,7 @@ def get_metrics_at_k(model: ConvModel,
     """
     Function combining all previous functions: create already_bought & ground_truth dict, get recs and compute metrics.
     """
-    recommendations = get_recommandation_tensor(
+    recommendations = get_recommendation_tensor(
         y,
         node_ids,
         model,

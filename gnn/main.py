@@ -20,7 +20,7 @@ from src.train_valid_split import train_valid_split
 
 from src.builder import create_graph, import_features
 from src.metrics import (create_already_bought, create_ground_truth,
-                         get_metrics_at_k, get_recommandation_tensor)
+                         get_metrics_at_k, get_recommendation_tensor)
 from src.train.run import train_loop, get_embeddings
 from src.evaluation import explore_recs, explore_sports, check_coverage
 from src.utils import save_txt, save_outputs, get_last_checkpoint
@@ -356,7 +356,7 @@ def train(data, fixed_params, data_paths,
             users, items = data.ground_truth_test
             ground_truth_dict = create_ground_truth(users, items)
             user_ids = np.unique(users).tolist()
-            recs = get_recommandation_tensor(
+            recs = get_recommendation_tensor(
                 embeddings,
                 node_ids,
                 trained_model,

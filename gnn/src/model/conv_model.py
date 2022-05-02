@@ -8,6 +8,7 @@ from src.model.cosine_prediction import CosinePrediction
 from src.model.node_embedding import NodeEmbedding
 from src.model.predicting_layer import PredictingLayer
 from src.model.predicting_module import PredictingModule
+from src.model.pass_through import PassThrough
 
 
 class ConvModel(nn.Module):
@@ -17,8 +18,7 @@ class ConvModel(nn.Module):
     """
 
     def __init__(self,
-                 g,
-                 dim_dict,
+                 dimension_dictionnary,
                  parameters: Parameters
                  ):
         """
@@ -49,9 +49,9 @@ class ConvModel(nn.Module):
         self.embedding_layer = parameters.embedding_layer
         if parameters.embedding_layer:
             self.user_embed = NodeEmbedding(
-                dim_dict['customer'], dim_dict['hidden'])
+                dimension_dictionnary['customer'], dimension_dictionnary['hidden'])
             self.item_embed = NodeEmbedding(
-                dim_dict['article'], dim_dict['hidden'])
+                dimension_dictionnary['article'], dimension_dictionnary['hidden'])
 
         self.layers = nn.ModuleList()
 
@@ -61,20 +61,22 @@ class ConvModel(nn.Module):
             self.layers.append(
                 dglnn.HeteroGraphConv(
                     {
-                        'buys': ConvLayer((dim_dict['customer'], dim_dict['article'] + dim_dict['edge']), dim_dict['hidden'], parameters),
-                        'is-bought-by': ConvLayer((dim_dict['article'], dim_dict['customer'] + dim_dict['edge']), dim_dict['hidden'], parameters)
+                        'buys': ConvLayer((dimension_dictionnary['customer'] + dimension_dictionnary['edge'], dimension_dictionnary['article']), dimension_dictionnary['hidden'], parameters),
+                        'is-bought-by': ConvLayer((dimension_dictionnary['article'] + dimension_dictionnary['edge'], dimension_dictionnary['customer']), dimension_dictionnary['hidden'], parameters),
+                        'will-buy': PassThrough((dimension_dictionnary['article'] + dimension_dictionnary['edge'], dimension_dictionnary['customer']), dimension_dictionnary['hidden'], parameters)
                     },
                     aggregate=parameters.aggregator_hetero
                 )
             )
 
         # hidden layers
-        for i in range(parameters.n_layers - 2):
+        for i in range(parameters.n_layers - 1):
             self.layers.append(
                 dglnn.HeteroGraphConv(
                     {
-                        'buys': ConvLayer((dim_dict['hidden'], dim_dict['hidden'] + dim_dict['edge']), dim_dict['hidden'], parameters),
-                        'is-bought-by': ConvLayer((dim_dict['hidden'], dim_dict['hidden'] + dim_dict['edge']), dim_dict['hidden'], parameters)
+                        'buys': ConvLayer((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['hidden'], parameters),
+                        'is-bought-by': ConvLayer((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['hidden'], parameters),
+                        'will-buy': PassThrough((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['hidden'], parameters)
                     },
                     aggregate=parameters.aggregator_hetero
                 )
@@ -84,36 +86,46 @@ class ConvModel(nn.Module):
         self.layers.append(
             dglnn.HeteroGraphConv(
                 {
-                        'buys': ConvLayer((dim_dict['hidden'], dim_dict['hidden'] + dim_dict['edge']), dim_dict['out'], parameters),
-                        'is-bought-by': ConvLayer((dim_dict['hidden'], dim_dict['hidden'] + dim_dict['edge']), dim_dict['out'], parameters)
+                        'buys': ConvLayer((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['out'], parameters),
+                        'is-bought-by': ConvLayer((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['out'], parameters),
+                        'will-buy': PassThrough((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['out'], parameters)
                 },
                 aggregate=parameters.aggregator_hetero
                 )
             )
 
         if parameters.prediction_layer == 'cos':
-            self.pred_fn = CosinePrediction()
+            self.prediction_fn = CosinePrediction()
         elif parameters.prediction_layer == 'nn':
-            self.pred_fn = PredictingModule(PredictingLayer, dim_dict['out'])
+            self.prediction_fn = PredictingModule(PredictingLayer, dimension_dictionnary['out'])
         else:
             raise KeyError(
                 'Prediction function {} not recognized.'.format(
                     parameters.pred))
 
     def get_embeddings(self,
-                       blocks,
+                       graph_or_blocks,
                        h):
-        for i in range(len(blocks)):
+        
+        if self.embedding_layer:
+            h['customer'] = self.user_embed(h['customer'])
+            h['article'] = self.item_embed(h['article'])
+            
+        for i in range(len(self.layers)):
             layer = self.layers[i]
-            h = layer(blocks[i], h)
+            
+            # Check wether graph is a block list or a full graph. 
+            if type(graph_or_blocks) is list:
+                h = layer(graph_or_blocks[i], h)
+            else:
+                h = layer(graph_or_blocks, h)
+    
         return h
 
     def forward(self,
-                blocks,
-                h,
                 pos_g,
                 neg_g,
-                embedding_layer: bool = True,
+                embeddings
                 ):
         """
         Full pass through the ConvModel.
@@ -147,10 +159,14 @@ class ConvModel(nn.Module):
             All score between negative examples.
 
         """
-        if embedding_layer:
-            h['customer'] = self.user_embed(h['customer'])
-            h['article'] = self.item_embed(h['article'])
-        h = self.get_embeddings(blocks, h)
-        pos_score = self.pred_fn(pos_g, h)
-        neg_score = self.pred_fn(neg_g, h)
-        return h, pos_score, neg_score
+        
+        pos_g.nodes['article'].data['h'] = embeddings['article'][pos_g.nodes['article'].data['_ID'].long()]
+        pos_g.nodes['customer'].data['h'] = embeddings['customer'][pos_g.nodes['customer'].data['_ID'].long()]
+        
+        neg_g.nodes['article'].data['h'] = embeddings['article'][neg_g.nodes['article'].data['_ID'].long()]
+        neg_g.nodes['customer'].data['h'] = embeddings['customer'][neg_g.nodes['customer'].data['_ID'].long()]
+
+        pos_score = self.prediction_fn(pos_g)
+        neg_score = self.prediction_fn(neg_g)
+        
+        return pos_score, neg_score

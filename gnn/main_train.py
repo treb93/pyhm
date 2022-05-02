@@ -6,10 +6,11 @@ import numpy as np
 import torch
 from dgl.data.utils import save_graphs
 from environment import Environment
+from src.get_dimension_dictionnary import get_dimension_dictionnary
+from src.classes.graphs import Graphs
 from parameters import Parameters
 from src.classes.dataloaders import DataLoaders
 from src.classes.dataset import Dataset
-from src.create_graph import create_graph
 from src.get_embeddings import get_embeddings
 from src.max_margin_loss import max_margin_loss
 from src.model.conv_model import ConvModel
@@ -19,7 +20,7 @@ from src.utils_data import assign_graph_features
 from src.utils import read_data, save_txt, save_outputs
 from src.utils_vizualization import plot_train_loss
 from src.metrics import (create_already_bought, create_ground_truth,
-                         get_metrics_at_k, get_recommandation_tensor)
+                         get_metrics_at_k, get_recommendation_tensor)
 from src.evaluation import explore_recs, explore_sports, check_coverage
 from presplit import presplit_data
 
@@ -66,27 +67,18 @@ def launch_training(
         environment, parameters
     )
 
-    print("Initialize graph.")
+    print("Initialize graphs.")
     # Initialize graph & features
-    graph = create_graph(dataset)
+    graphs = Graphs(dataset, parameters)
+    
+    
 
-    dim_dict = {'customer': graph.nodes['customer'].data['features'].shape[1],
-                'article': graph.nodes['article'].data['features'].shape[1],
-                'edge': graph.edges['buys'].data['features'].shape[1],
-                'out': parameters.out_dim,
-                'hidden': parameters.hidden_dim}
+    dim_dict = get_dimension_dictionnary(graphs, parameters)
 
 
     print("Build model.")
     # Initialize model
-    model = ConvModel(graph,
-                      dim_dict,
-                      parameters
-                      )
-    if environment.cuda:
-        print("Assigning model to GPU.")
-        model = model.to(environment.device)
-        
+    model = ConvModel(dim_dict, parameters)
 
     #model.load_state_dict(
     #    torch.load(
@@ -94,11 +86,7 @@ def launch_training(
     #        map_location=environment.device))
 
     print("Initialize Dataloaders.")
-    dataloaders = DataLoaders(graph,
-                              dataset,
-                              parameters,
-                              environment
-                              )
+    dataloaders = DataLoaders(graphs, dataset, parameters)
 
     # Run model
     hyperparameters_text = f'{str(parameters)} \n'
@@ -110,7 +98,7 @@ def launch_training(
 
     trained_model, viz, best_metrics = train_loop(
         model=model,
-        graph=graph,
+        graphs=graphs,
         dataset=dataset,
         dataloaders=dataloaders,
         loss_fn=max_margin_loss,
@@ -135,7 +123,7 @@ def launch_training(
     with torch.no_grad():
         embeddings, node_ids = get_embeddings(graph,
                                               trained_model,
-                                              dataloaders.dataloader_test,
+                                              dataloaders.dataloader_embedding,
                                               dataset.test_set_length,
                                               environment,
                                               parameters
@@ -158,7 +146,7 @@ def launch_training(
         with torch.no_grad():
             log.debug('ANALYSIS OF RECOMMENDATIONS')
 
-            recs = get_recommandation_tensor(
+            recs = get_recommendation_tensor(
                 embeddings,
                 node_ids,
                 trained_model,

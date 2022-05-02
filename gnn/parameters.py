@@ -5,7 +5,8 @@ class Parameters():
     def __init__(self, new_parameters):
         self.weeks_of_purchases = 53  # Max is 104
         self.duplicates = 'keep_all'  # 'keep_last', 'keep_all', 'count_occurrence'
-        self.batch_size = 2048
+        self.edge_batch_size = 3000
+        self.embedding_batch_size = 70000
         self.explore = True
         self.k = 12
         self.lifespan_of_items = 180
@@ -13,7 +14,7 @@ class Parameters():
         self.start_epoch = 0
         self.num_epochs = 2000
         self.optimizer = torch.optim.Adam
-        self.patience = 10
+        self.patience = 50
         self.prediction_layer = 'cos'
         self.remove = 0
         # TODO: Dégager remove_false_negative ?
@@ -23,7 +24,6 @@ class Parameters():
         self.run_inference = 1
         self.subtrain_size = 0.05
         self.valid_size = 0.2
-        self.test_size = 0.2
 
         self.aggregator_hetero = 'mean'
         self.aggregator_type = 'mean'
@@ -35,7 +35,7 @@ class Parameters():
         self.embedding_layer = True
         self.lr = 0.00017985194246308484
         self.n_layers = 5
-        self.neg_sample_size = 2000
+        self.neg_sample_size = 1
         self.norm = True
         self.use_popularity = True
         self.weight_popularity = 0.5
@@ -43,7 +43,12 @@ class Parameters():
         self.purchases_sample = 0.5
         self.prediction_layer = 'cos'
         self.use_recency = True
-        self.num_workers = 4
+        self.num_workers = 0
+        self.partial_sampling_num_neighbors = 5
+        
+        self.customers_without_prediction_ratio = 0
+        self.embedding_on_full_set = False
+        self.batches_per_embedding = 5
 
         self.update(new_parameters)
 
