@@ -90,11 +90,11 @@ class DataLoaders():
             num_workers=0)
 
         self._num_batches_train = math.ceil(
-            len(dataset.customers_nid_train) /
+            len(dataset.purchases_to_predict.loc[dataset.purchases_to_predict['set'] == 0]) /
             parameters.edge_batch_size)
 
         self._num_batches_valid = math.ceil(
-            len(dataset.customers_nid_valid) / parameters.edge_batch_size)
+            len(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1]) / parameters.edge_batch_size)
 
     @property
     def dataloader_train_loss(self) -> DataLoader:

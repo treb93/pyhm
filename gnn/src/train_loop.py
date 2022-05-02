@@ -76,23 +76,25 @@ def train_loop(model: ConvModel,
         
         opt.zero_grad()
 
-        pos_score_cat = torch.tensor([]).to(environment.device)
-        neg_score_cat = torch.tensor([]).to(environment.device)
+        pos_score_cat = torch.tensor([])
+        neg_score_cat = torch.tensor([])
                 
         for _, pos_g, neg_g, blocks in dataloaders.dataloader_train_loss:
             i += 1
-            if i > 5:
-                break
             
             # Process embeddings and initialize score tensors.
             if (i % parameters.batches_per_embedding == 1) or (i == dataloaders.num_batches_train):
                 print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Get embeddings...                   ", end ="")
+                
+                if i > 1:
+                    del embeddings
                 
                 embeddings = model.get_embeddings(graphs.history_graph, {
                     'article': graphs.history_graph.nodes['article'].data['features'],
                     'customer': graphs.history_graph.nodes['customer'].data['features'],
                 })
                 
+                print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Save embeddings on graph...                   ", end ="")
                 graphs.prediction_graph.nodes['article'].data['h'] = embeddings['article'][0:graphs.prediction_graph.num_nodes('article')]
                 graphs.prediction_graph.nodes['customer'].data['h'] = embeddings['customer'][0:graphs.prediction_graph.num_nodes('customer')]
                     
@@ -100,18 +102,16 @@ def train_loop(model: ConvModel,
             
             print(f"\rProcess train batch {i} / {dataloaders.num_batches_train}                   ", end ="")
 
-            pos_g.to(environment.device)
-            neg_g.to(environment.device)
-
             pos_score, neg_score = model(pos_g, neg_g, embeddings)
-
-            pos_score_cat = torch.cat([pos_score_cat, pos_score.to(environment.device)])
-            neg_score_cat = torch.cat([neg_score_cat, neg_score.to(environment.device)])
+            pos_score_cat = torch.cat([pos_score_cat, pos_score])
+            neg_score_cat = torch.cat([neg_score_cat, neg_score])
+           
                     
                     
             # Proceed to gradient descent. 
             if (i % parameters.batches_per_embedding == 1) or (i == dataloaders.num_batches_train):
                 print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Calculate loss...                   ", end ="")
+
                 loss = loss_fn(pos_score,
                                 neg_score,
                                 parameters=parameters,
@@ -120,11 +120,15 @@ def train_loop(model: ConvModel,
 
                 total_loss += loss.item()
                 
+                print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Perform gradient descent...                   ", end ="")
                 loss.backward()
                 opt.step()
                 
-                pos_score_cat = torch.tensor([]).to(environment.device)
-                neg_score_cat = torch.tensor([]).to(environment.device)
+                del pos_score_cat
+                del neg_score_cat
+                
+                pos_score_cat = torch.tensor([])
+                neg_score_cat = torch.tensor([])
             
         
         train_avg_loss = total_loss / i
@@ -140,17 +144,17 @@ def train_loop(model: ConvModel,
         
                 for _, pos_g, neg_g, blocks in dataloaders.dataloader_valid_loss:
                     i += 1
-                    print(f"\rProcess valid batch {i} / {dataloaders.num_batches_train}             ", end ="")
+                    print(f"\rProcess valid batch {i} / {dataloaders.num_batches_valid}             ", end ="")
 
-                    pos_g.to(environment.device)
-                    neg_g.to(environment.device)
+                    pos_g
+                    neg_g
                     
-                    pos_score = model.prediction_fn(pos_g).to(environment.device)
+                    pos_score = model.prediction_fn(pos_g)
                     
                     neg_g.nodes['article'].data['h'] = graphs.prediction_graph.nodes['article'].data['h'][neg_g.nodes['article'].data['_ID'].long()]
                     neg_g.nodes['customer'].data['h'] = graphs.prediction_graph.nodes['customer'].data['h'][neg_g.nodes['customer'].data['_ID'].long()]
                     
-                    neg_score = model.prediction_fn(neg_g).to(environment.device)
+                    neg_score = model.prediction_fn(neg_g)
 
                     val_loss = loss_fn(pos_score,
                                     neg_score,
@@ -164,7 +168,7 @@ def train_loop(model: ConvModel,
 
         ############
         # METRICS PER EPOCH
-        if get_metrics and epoch % 50 == 0:
+        if get_metrics and epoch % 20 == 0:
             
             model.eval()
             with torch.no_grad():
@@ -254,11 +258,11 @@ def train_loop(model: ConvModel,
                         'precision': valid_precision_at_k,
                     }
 
-            #print("Save model.")
-            #date = str(datetime.datetime.now())[:-10].replace(' ', '')
-            #torch.save(
-            #    model.state_dict(),
-            #    f'models/FULL_Precision_{val_precision_at_k * 100:.2f}_{date}.pth')
+            print("Save model.")
+            date = str(datetime.datetime.now())[:-10].replace(' ', '')
+            torch.save(
+                model.state_dict(),
+                f'models/FULL_Precision_{epoch}_Epochs_{valid_precision_at_k * 100:.2f}_{date}.pth')
         else:
             sentence = f"Epoch {epoch:05d} | Training Loss {train_avg_loss:.5f} | Validation Loss {valid_avg_loss:.5f} | "
             print(sentence)

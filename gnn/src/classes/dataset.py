@@ -106,7 +106,7 @@ class Dataset():
                 
             else: 
                 purchase_history = purchase_history_with_prediction
-            
+                
             # Update article and customer's lists.
             customer_id_list = pd.concat([purchases_to_predict['customer_id'], purchase_history['customer_id']]).unique()
             article_id_list = pd.concat([purchases_to_predict['article_id'], purchase_history['article_id']]).unique()
@@ -197,8 +197,13 @@ class Dataset():
         self._customers = customers
         
         
+        
         self._customers_nid_train = customers[customers['customer_id'].isin(customer_id_train)]['customer_nid'].unique()
         self._customers_nid_valid = customers[customers['set'] == 1]['customer_nid'].unique()
+        
+        
+        print("Number of customer in train set : ", len(self._customers_nid_train))
+        print("Number of customer in Valid set : ", len(self._customers_nid_valid))
         
         del purchase_history
         del purchased_list

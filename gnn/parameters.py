@@ -12,9 +12,9 @@ class Parameters():
         self.lifespan_of_items = 180
         self.num_choices = 10
         self.start_epoch = 0
-        self.num_epochs = 2000
+        self.num_epochs = 200
         self.optimizer = torch.optim.Adam
-        self.patience = 50
+        self.patience = 20
         self.prediction_layer = 'cos'
         self.remove = 0
         # TODO: Dégager remove_false_negative ?
@@ -35,7 +35,7 @@ class Parameters():
         self.embedding_layer = True
         self.lr = 0.00017985194246308484
         self.n_layers = 5
-        self.neg_sample_size = 1
+        self.neg_sample_size = 300
         self.norm = True
         self.use_popularity = True
         self.weight_popularity = 0.5

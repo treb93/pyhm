@@ -86,7 +86,7 @@ def launch_training(
     #        map_location=environment.device))
 
     print("Initialize Dataloaders.")
-    dataloaders = DataLoaders(graphs, dataset, parameters)
+    dataloaders = DataLoaders(graphs, dataset, parameters, environment)
 
     # Run model
     hyperparameters_text = f'{str(parameters)} \n'
@@ -117,48 +117,10 @@ def launch_training(
     log.info(sentence)
     save_txt(sentence, environment.result_filepath, mode='a')
 
-    # Report performance on test set
-    log.debug('Test metrics start ...')
-    trained_model.eval()
-    with torch.no_grad():
-        embeddings, node_ids = get_embeddings(graph,
-                                              trained_model,
-                                              dataloaders.dataloader_embedding,
-                                              dataset.test_set_length,
-                                              environment,
-                                              parameters
-                                              )
-
-        precision = get_metrics_at_k(
-            model=trained_model,
-            y=embeddings,
-            node_ids=node_ids,
-            dataset=dataset,
-            parameters=parameters
-        )
-
-        sentence = f"TEST Precision {precision:.3f}%"
-        log.info(sentence)
-        save_txt(sentence, environment.result_filepath, mode='a')
-
-    if check_embedding:
-        trained_model.eval()
-        with torch.no_grad():
-            log.debug('ANALYSIS OF RECOMMENDATIONS')
-
-            recs = get_recommendation_tensor(
-                embeddings,
-                node_ids,
-                trained_model,
-                parameters
-            )
-
-            # TODO: réutiliser explore_recs ?
-
     # Save model
     date = str(datetime.datetime.now())[:-10].replace(' ', '')
     torch.save(trained_model.state_dict(),
-               f'models/FULL_Recall_{precision * 100:.2f}_{date}.pth')
+               f'models/FULL_Recall_{best_metrics.precision * 100:.2f}_{date}.pth')
     # Save all necessary params
     save_outputs(
         {
@@ -208,14 +170,11 @@ def main(
         'hidden_dim': 256,
         'out_dim': 128,
         'embedding_layer': True,
-        'lr': 0.00017985194246308484,
-        'n_layers': 5,
-        'neg_sample_size': 2000,
+        #'lr': 0.00017985194246308484,
+        'lr': 0.01,
+        'n_layers': 4,
         'norm': True,
         'use_popularity': True,
-        'weight_popularity': 0.5,
-        'days_popularity': 7,
-        'purchases_sample': 0.5,
         'prediction_layer': 'cos',
         'use_recency': True,
         'num_workers': 4 if environment.cuda else 0
