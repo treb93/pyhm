@@ -107,7 +107,7 @@ def launch_training(
         plot_train_loss(hyperparameters_text, viz)
 
     # Report performance on validation set
-    sentence = f"BEST VALIDATION Precision {best_metrics['precision'] * 100:.3f}% "
+    sentence = f"BEST VALIDATION Precision at 6 / 12 / 24 / 48 - {best_metrics['precision_6'] * 100:.3f}% / {best_metrics['precision_12'] * 100:.3f}%  / {best_metrics['precision_24'] * 100:.3f}%  / {best_metrics['precision_48'] * 100:.3f}% "
 
     log.info(sentence)
     save_txt(sentence, environment.result_filepath, mode='a')
@@ -115,7 +115,7 @@ def launch_training(
     # Save model
     date = str(datetime.datetime.now())[:-10].replace(' ', '')
     torch.save(trained_model.state_dict(),
-               f'models/FULL_Recall_{best_metrics.precision * 100:.2f}_{date}.pth')
+               f"models/FULL_Precision_{best_metrics['precision_12'] * 100:.2f}_{date}.pth")
     # Save all necessary params
     save_outputs(
         {
@@ -124,12 +124,12 @@ def launch_training(
         },
         'models/'
     )
-    print("Saved model & parameters to disk.")
+    print("Saved parameters to disk.")
 
     # Save graphs
-    save_graphs(f'models/{date}_graph.bin', [graph])
-
-    print("Saved graphs to disk.")
+    # save_graphs(f'models/{date}_graph.bin', [graphs])
+    # 
+    # print("Saved graphs to disk.")
 
 
 @click.command()
@@ -161,11 +161,9 @@ def main(
         'aggregator_type': 'mean',
         'delta': 0.266,
         'embedding_layer': True,
-        #'lr': 0.00017985194246308484,
         'lr': 0.001,
-        'neg_sample_size': 100,
-        'edge_batch_size': 10000,
-        'batches_per_embedding': 1
+        'batches_per_embedding': 1,
+        'num_epochs': 3
     })
 
     launch_training(

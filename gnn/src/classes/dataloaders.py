@@ -47,10 +47,14 @@ class DataLoaders():
         edge_sampler = dgl.dataloading.NeighborSampler([0])
         node_sampler = dgl.dataloading.NeighborSampler([5, 5, 0, 0])
 
+        # Batch size parameter corresponds to the positive edges, whereas our parameter corresponds to the total batch size. 
+        edge_pos_size = parameters.edge_batch_size // (parameters.neg_sample_size + 1)
 
         negative_sampler = dgl.dataloading.as_edge_prediction_sampler(
-            edge_sampler, negative_sampler=dgl.dataloading.negative_sampler.GlobalUniform(
+            edge_sampler, negative_sampler=dgl.dataloading.negative_sampler.Uniform(
                 parameters.neg_sample_size))
+
+        print("Batch size: ", edge_pos_size)
 
         self._dataloader_train_loss = dgl.dataloading.DataLoader(
             graphs.prediction_graph,
@@ -58,7 +62,7 @@ class DataLoaders():
                 'buys': th.tensor(dataset.purchases_to_predict.loc[dataset.purchases_to_predict['set'] == 0].index.values, dtype=th.int32)
             },
             negative_sampler,
-            batch_size=parameters.edge_batch_size,
+            batch_size=edge_pos_size,
             #device = environment.device,
             #use_uva = True,
             shuffle=True,
@@ -71,7 +75,7 @@ class DataLoaders():
                 'buys': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1].index.values, dtype=th.int32)
             },
             negative_sampler,
-            batch_size=parameters.edge_batch_size,
+            batch_size=edge_pos_size,
             shuffle=True,
             drop_last=False,
             num_workers=0
@@ -91,10 +95,10 @@ class DataLoaders():
 
         self._num_batches_train = math.ceil(
             len(dataset.purchases_to_predict.loc[dataset.purchases_to_predict['set'] == 0]) /
-            parameters.edge_batch_size)
+            edge_pos_size)
 
         self._num_batches_valid = math.ceil(
-            len(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1]) / parameters.edge_batch_size)
+            len(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1]) / edge_pos_size)
 
     @property
     def dataloader_train_loss(self) -> DataLoader:

@@ -145,34 +145,43 @@ class ConvLayer(nn.Module):
             graph.srcdata['h'] = h_neigh
             graph.update_all(fn.copy_e('features', 'm_e'), fn.mean('m_e', 'edge'))
             graph.update_all(
-                fn.u_mul_e('h', 'weight', 'm_n'), 
-                #fn.copy_u('h', 'm_n'), 
+                fn.copy_u('h', 'm_n'), 
                 fn.mean('m_n', 'neigh')
             )
             #graph.update_all(fn.copy_u('h', 'm_n'), fn.mean('m_n', 'neigh'))
             h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
+        elif self._aggre_type == 'mean_weighted':
+            graph.srcdata['h'] = h_neigh
+            graph.update_all(fn.copy_e('features', 'm_e'), fn.mean('m_e', 'edge'))
+            graph.update_all(
+                fn.u_mul_e('h', 'weight', 'm_n'), 
+                fn.mean('m_n', 'neigh')
+            )
+            #graph.update_all(fn.copy_u('h', 'm_n'), fn.mean('m_n', 'neigh'))
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
+            
         elif self._aggre_type == 'mean_nn':
             graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
             graph.update_all(
                 fn.copy_src('h', 'm'),
                 fn.mean('m', 'neigh'))
-            h_neigh = graph.dstdata['neigh']
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
         elif self._aggre_type == 'pool_nn':
             graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
             graph.update_all(
                 fn.copy_src('h', 'm'),
                 fn.max('m', 'neigh'))
-            h_neigh = graph.dstdata['neigh']
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
         elif self._aggre_type == 'lstm':
             graph.srcdata['h'] = h_neigh
             graph.update_all(
                 fn.copy_src('h', 'm'),
                 self._lstm_reducer)
-            h_neigh = graph.dstdata['neigh']
-
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
+            
         elif self._aggre_type == 'mean_edge':
             graph.srcdata['h'] = h_neigh
             if graph.canonical_etypes[0][0] in [
@@ -182,13 +191,13 @@ class ConvLayer(nn.Module):
                     'article']:
                 graph.edata['h'] = graph.edata['occurrence'].float().unsqueeze(1)
                 graph.update_all(
-                    fn.u_mul_e('h', 'h', 'm'),
+                    fn.u_mul_e('h', 'weight', 'm'),
                     fn.mean('m', 'neigh'))
             else:
                 graph.update_all(
                     fn.copy_src('h', 'm'),
                     fn.mean('m', 'neigh'))
-            h_neigh = graph.dstdata['neigh']
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
         elif self._aggre_type == 'mean_nn_edge':
             graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
@@ -199,13 +208,13 @@ class ConvLayer(nn.Module):
                     'article']:
                 graph.edata['h'] = graph.edata['occurrence'].float().unsqueeze(1)
                 graph.update_all(
-                    fn.u_mul_e('h', 'h', 'm'),
+                    fn.u_mul_e('h', 'weight', 'm'),
                     fn.mean('m', 'neigh'))
             else:
                 graph.update_all(
                     fn.copy_src('h', 'm'),
                     fn.mean('m', 'neigh'))
-            h_neigh = graph.dstdata['neigh']
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
         elif self._aggre_type == 'pool_nn_edge':
             graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
@@ -222,7 +231,7 @@ class ConvLayer(nn.Module):
                 graph.update_all(
                     fn.copy_src('h', 'm'),
                     fn.max('m', 'neigh'))
-            h_neigh = graph.dstdata['neigh']
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
         elif self._aggre_type == 'lstm_edge':
             graph.srcdata['h'] = h_neigh
@@ -239,7 +248,7 @@ class ConvLayer(nn.Module):
                 graph.update_all(
                     fn.copy_src('h', 'm'),
                     self._lstm_reducer)
-            h_neigh = graph.dstdata['neigh']
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
         else:
             raise KeyError(

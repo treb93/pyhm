@@ -5,7 +5,7 @@ class Parameters():
     def __init__(self, new_parameters):
         self.weeks_of_purchases = 53  # Max is 104
         self.duplicates = 'keep_all'  # 'keep_last', 'keep_all', 'count_occurrence'
-        self.edge_batch_size = 3000
+        self.edge_batch_size = 4000000
         self.embedding_batch_size = 70000
         self.explore = True
         self.k = 12
@@ -48,7 +48,7 @@ class Parameters():
         
         self.customers_without_prediction_ratio = 0
         self.embedding_on_full_set = False
-        self.batches_per_embedding = 5
+        self.batches_per_embedding = 3
 
         self.update(new_parameters)
 

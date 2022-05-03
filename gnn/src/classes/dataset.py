@@ -63,11 +63,7 @@ class Dataset():
         customers = pd.read_pickle(environment.customers_path)
         articles = pd.read_pickle(environment.articles_path)
         
-        # Remove a defined amoutn of customers from the set.
-        if parameters.remove:
-            customers = customers.sample(frac = 1 - parameters.remove)
-            customers_id_list = customers['customer_id'].unique()
-            transactions = transactions[transactions['customer_id'].isin(customers_id_list)]
+
 
         if parameters.embedding_on_full_set == True:
             purchase_history = transactions[transactions['week_number']
@@ -76,6 +72,18 @@ class Dataset():
             purchase_history = transactions[transactions['week_number']
                                             <= parameters.weeks_of_purchases]
 
+            
+            # Remove a defined amoutn of customers from the set.
+            if parameters.remove:
+                customer_id_list = purchases_to_predict['customer_id'].unique()
+                
+                np.random.shuffle(customer_id_list)
+                nb_customers = int(customer_id_list.shape[0] * (1 - parameters.remove))
+                customer_id_list = customer_id_list[0:nb_customers]
+                
+                purchases_to_predict = purchases_to_predict[purchases_to_predict['customer_id'].isin(customer_id_list)]
+                purchase_history = purchase_history[purchase_history['customer_id'].isin(customer_id_list)]
+            
             customer_id_list = purchases_to_predict['customer_id'].unique()
             article_id_list = purchases_to_predict['article_id'].unique()
             
@@ -113,8 +121,12 @@ class Dataset():
             else: 
                 purchase_history = purchase_history_with_prediction
                 
+            # Remove users that don't have history (for ID management purpose)
+            # TODO: find a workaround
+            customer_id_list = purchase_history['customer_id'].unique()
+            purchases_to_predict = purchases_to_predict[purchases_to_predict['customer_id'].isin(customer_id_list)]
+             
             # Update article and customer's lists.
-            customer_id_list = pd.concat([purchases_to_predict['customer_id'], purchase_history['customer_id']]).unique()
             article_id_list = pd.concat([purchases_to_predict['article_id'], purchase_history['article_id']]).unique()
             
             # Only process customers who have transactions.
@@ -201,8 +213,6 @@ class Dataset():
         self._purchases_to_predict = purchases_to_predict
         self._articles = articles
         self._customers = customers
-        
-        
         
         self._customers_nid_train = customers[customers['customer_id'].isin(customer_id_train)]['customer_nid'].unique()
         self._customers_nid_valid = customers[customers['set'] == 1]['customer_nid'].unique()

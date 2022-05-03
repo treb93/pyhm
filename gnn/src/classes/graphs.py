@@ -32,7 +32,7 @@ class Graphs():
                 'buys',
                 'article'): (
                 th.tensor(
-                    dataset._purchase_history['customer_nid'].values,
+                    dataset.purchase_history['customer_nid'].values,
                     dtype=th.int32),
                 th.tensor(
                     dataset.purchase_history['article_nid'].values,
@@ -52,9 +52,8 @@ class Graphs():
 
         history_graph = dgl.heterograph(
             history_data,
-            device = th.device('cpu')
         )
-
+        
         # Add features.
         columns_to_drop = ['customer_id', 'customer_nid', 'set']
         history_graph.nodes['customer'].data['features'] = th.tensor(
@@ -87,11 +86,11 @@ class Graphs():
         # Also use purchase amount as weight, i.e multiplication of the source message passing.
         history_graph.edges['is-bought-by'].data['weight'] = th.tensor(dataset.purchase_history['purchases'].values, dtype=th.float32)
 
+
         # If we have to calculate recommandations on full set, create a placeholder for embeddings.
         if parameters.embedding_on_full_set:
             history_graph.nodes['customer'].data['h'] = th.zeros((history_graph.num_nodes('customer'), parameters.out_dim))
             history_graph.nodes['article'].data['h'] = th.zeros((history_graph.num_nodes('article'), parameters.out_dim))
-
 
         prediction_data = {
             ('customer',
@@ -108,7 +107,6 @@ class Graphs():
         
         prediction_graph = dgl.heterograph(
             prediction_data,
-            device = th.device('cpu')
         )
         
         # Initialize embedding data on prediction graph.
@@ -117,6 +115,7 @@ class Graphs():
         
         self._history_graph = history_graph
         self._prediction_graph = prediction_graph
+        
         
         del history_graph
         del prediction_graph

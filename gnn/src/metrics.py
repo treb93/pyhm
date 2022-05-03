@@ -1,3 +1,4 @@
+from typing import List, Tuple
 from environment import Environment
 from parameters import Parameters
 from src.classes.dataset import Dataset
@@ -12,33 +13,10 @@ import torch.nn as nn
 from dgl import DGLHeteroGraph
 
 
-def create_ground_truth(users, items):
-    """
-    Creates a dictionary, where the keys are user ids and the values are item ids that the user actually bought.
-    """
-    ground_truth_arr = np.stack((np.asarray(users), np.asarray(items)), axis=1)
-    ground_truth_dict = defaultdict(list)
-    for key, val in ground_truth_arr:
-        ground_truth_dict[key].append(val)
-    return ground_truth_dict
-
-
-def create_already_bought(g: DGLHeteroGraph, bought_eids, etype='buys'):
-    """
-    Creates a dictionary, where the keys are user ids and the values are item ids that the user already bought.
-    """
-    users_train, items_train = g.find_edges(bought_eids, etype=etype)
-    already_bought_arr = np.stack(
-        (np.asarray(users_train), np.asarray(items_train)), axis=1)
-    already_bought_dict = defaultdict(list)
-    for key, val in already_bought_arr:
-        already_bought_dict[key].append(val)
-    return already_bought_dict
-
-
-def get_recommendation_tensor(y,
+def get_recommendation_nids(y,
                               parameters: Parameters,
-                              environment: Environment
+                              environment: Environment,
+                              cutoff = 12
                               ) -> torch.tensor:
     """
     Computes K recommendations for all users, given hidden states.
@@ -56,7 +34,7 @@ def get_recommendation_tensor(y,
 
         # Get the indexes of the best score
         recommandations = torch.argsort(
-            similarities, dim=1, descending=True)[:, 0:12].int()
+            similarities, dim=1, descending=True)[:, 0:48].int()
 
         # Replace the indexes by real article ids.
         #recommandations = node_ids['article'][recommandations[:]]
@@ -92,9 +70,9 @@ def get_recommendation_tensor(y,
 def precision_at_k(
         recommendations: torch.tensor,
         customer_nids: torch.tensor,
-        dataset: Dataset) -> float:
+        dataset: Dataset):
     """
-    Given the recommendations and the purchase list, computes precision, recall & coverage.
+    Given the recommendations and the purchase list, computes precision at 6, 12, 24 & 48.
     """
 
     # Builds a dataset for having both purchase list and prediction list aside.
@@ -112,38 +90,23 @@ def precision_at_k(
 
     score_dataframe = score_dataframe[(score_dataframe['prediction_length'] > 0) & (score_dataframe['length'] > 0)]
 
-    precision = score_dataframe.apply(
-        lambda x: np.sum(
-                np.where(
-                    x['prediction'][i] in x['articles'],
-                    1,
-                    0
-                ) for i in range(int(min(len(x['prediction']), x['length']))
-            )
-        ) / min(len(x['prediction']), x['length']), axis=1)
+    precision_list = []
 
-    return precision.mean()
+    for k in [6, 12, 24, 48]:
+        precision = score_dataframe.apply(
+            lambda x: np.sum(
+                        np.where(
+                            x['prediction'][i] in x['articles'],
+                            1,
+                            0
+                        ) for i in range(min(k, x['prediction_length']))
+                    ) / min(k, len(x['prediction']), x['length']), 
+            axis=1)
+        
+        precision_list.append(precision.mean())
+        
+    return precision_list
 
-
-def get_metrics_at_k(model: ConvModel,
-                     y,
-                     node_ids,
-                     dataset: Dataset,
-                     parameters: Parameters
-                     ) -> float:
-    """
-    Function combining all previous functions: create already_bought & ground_truth dict, get recs and compute metrics.
-    """
-    recommendations = get_recommendation_tensor(
-        y,
-        node_ids,
-        model,
-        parameters)
-
-    precision = precision_at_k(
-        recommendations, node_ids, dataset)
-
-    return precision
 
 
 def MRR_neg_edges(model,
