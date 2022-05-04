@@ -46,7 +46,7 @@ class ConvLayer(nn.Module):
             self.lstm.reset_parameters()
 
     def __init__(self,
-                 in_feats: Tuple[int, int],
+                 in_feats: Tuple[int, int, int],
                  out_feats: int,
                  parameters: Parameters
                  ):
@@ -81,24 +81,24 @@ class ConvLayer(nn.Module):
             Apply normalization
         """
         super().__init__()
-        self._in_neigh_feats, self._in_self_feats = in_feats
+        self._in_neigh_feats, self._in_self_feats, self._in_edge_feats = in_feats
         self._out_feats = out_feats
         self._aggre_type = parameters.aggregator_type
         self.dropout_fn = nn.Dropout(parameters.dropout)
         self.norm = parameters.norm
         self.fc_self = nn.Linear(self._in_self_feats, out_feats, bias=False)
-        self.fc_neigh = nn.Linear(self._in_neigh_feats, out_feats, bias=False)
+        self.fc_neigh = nn.Linear(self._in_neigh_feats + self._in_edge_feats, out_feats, bias=False)
         # self.fc_edge = nn.Linear(1, 1, bias=True)  # Projecting recency days
         if parameters.aggregator_type in [
             'pool_nn',
-            'pool_nn_edge',
+            'pool_nn_weighted',
             'mean_nn',
-                'mean_nn_edge']:
+                'mean_nn_weighted']:
             self.fc_preagg = nn.Linear(
                 self._in_neigh_feats,
                 self._in_neigh_feats,
                 bias=False)
-        if parameters.aggregator_type == 'lstm':
+        if parameters.aggregator_type == 'lstm' or parameters.aggregator_type == 'lstm_weighted':
             self.lstm = nn.LSTM(
                 self._in_neigh_feats,
                 self._in_neigh_feats,
@@ -141,9 +141,10 @@ class ConvLayer(nn.Module):
         h_neigh = self.dropout_fn(h_neigh)
         h_self = self.dropout_fn(h_self)
 
+        graph.update_all(fn.copy_e('features', 'm_e'), fn.mean('m_e', 'edge'))
+            
         if self._aggre_type == 'mean':
             graph.srcdata['h'] = h_neigh
-            graph.update_all(fn.copy_e('features', 'm_e'), fn.mean('m_e', 'edge'))
             graph.update_all(
                 fn.copy_u('h', 'm_n'), 
                 fn.mean('m_n', 'neigh')
@@ -153,10 +154,9 @@ class ConvLayer(nn.Module):
 
         elif self._aggre_type == 'mean_weighted':
             graph.srcdata['h'] = h_neigh
-            graph.update_all(fn.copy_e('features', 'm_e'), fn.mean('m_e', 'edge'))
             graph.update_all(
-                fn.u_mul_e('h', 'weight', 'm_n'), 
-                fn.mean('m_n', 'neigh')
+                fn.u_mul_e('h', 'weight', 'm'), 
+                fn.mean('m', 'neigh')
             )
             #graph.update_all(fn.copy_u('h', 'm_n'), fn.mean('m_n', 'neigh'))
             h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
@@ -164,92 +164,45 @@ class ConvLayer(nn.Module):
         elif self._aggre_type == 'mean_nn':
             graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
             graph.update_all(
-                fn.copy_src('h', 'm'),
+                fn.copy_u('h', 'm'), 
                 fn.mean('m', 'neigh'))
             h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
+        elif self._aggre_type == 'mean_nn_weighted':
+            graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
+            graph.update_all(
+                fn.u_mul_e('h', 'weight', 'm'), 
+                fn.mean('m', 'neigh'))
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
+            
         elif self._aggre_type == 'pool_nn':
             graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
             graph.update_all(
-                fn.copy_src('h', 'm'),
+                fn.copy_u('h', 'm'), 
+                fn.max('m', 'neigh'))
+            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
+            
+        elif self._aggre_type == 'pool_nn_weighted':
+            graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
+            graph.update_all(
+                fn.u_mul_e('h', 'weight', 'm'), 
                 fn.max('m', 'neigh'))
             h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
 
         elif self._aggre_type == 'lstm':
             graph.srcdata['h'] = h_neigh
             graph.update_all(
-                fn.copy_src('h', 'm'),
+                fn.copy_u('h', 'm'), 
                 self._lstm_reducer)
             h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
             
-        elif self._aggre_type == 'mean_edge':
+        elif self._aggre_type == 'lstm_weighted':
             graph.srcdata['h'] = h_neigh
-            if graph.canonical_etypes[0][0] in [
-                    'customer',
-                    'article'] and graph.canonical_etypes[0][2] in [
-                    'customer',
-                    'article']:
-                graph.edata['h'] = graph.edata['occurrence'].float().unsqueeze(1)
-                graph.update_all(
-                    fn.u_mul_e('h', 'weight', 'm'),
-                    fn.mean('m', 'neigh'))
-            else:
-                graph.update_all(
-                    fn.copy_src('h', 'm'),
-                    fn.mean('m', 'neigh'))
+            graph.update_all(
+                fn.u_mul_e('h', 'weight', 'm'), 
+                self._lstm_reducer)
             h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
-
-        elif self._aggre_type == 'mean_nn_edge':
-            graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
-            if graph.canonical_etypes[0][0] in [
-                    'customer',
-                    'article'] and graph.canonical_etypes[0][2] in [
-                    'customer',
-                    'article']:
-                graph.edata['h'] = graph.edata['occurrence'].float().unsqueeze(1)
-                graph.update_all(
-                    fn.u_mul_e('h', 'weight', 'm'),
-                    fn.mean('m', 'neigh'))
-            else:
-                graph.update_all(
-                    fn.copy_src('h', 'm'),
-                    fn.mean('m', 'neigh'))
-            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
-
-        elif self._aggre_type == 'pool_nn_edge':
-            graph.srcdata['h'] = F.relu(self.fc_preagg(h_neigh))
-            if graph.canonical_etypes[0][0] in [
-                    'customer',
-                    'article'] and graph.canonical_etypes[0][2] in [
-                    'customer',
-                    'article']:
-                graph.edata['h'] = graph.edata['occurrence'].float().unsqueeze(1)
-                graph.update_all(
-                    fn.u_mul_e('h', 'h', 'm'),
-                    fn.max('m', 'neigh'))
-            else:
-                graph.update_all(
-                    fn.copy_src('h', 'm'),
-                    fn.max('m', 'neigh'))
-            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
-
-        elif self._aggre_type == 'lstm_edge':
-            graph.srcdata['h'] = h_neigh
-            if graph.canonical_etypes[0][0] in [
-                    'customer',
-                    'article'] and graph.canonical_etypes[0][2] in [
-                    'customer',
-                    'article']:
-                graph.edata['h'] = graph.edata['occurrence'].float().unsqueeze(1)
-                graph.update_all(
-                    fn.u_mul_e('h', 'h', 'm'),
-                    self._lstm_reducer)
-            else:
-                graph.update_all(
-                    fn.copy_src('h', 'm'),
-                    self._lstm_reducer)
-            h_neigh = torch.cat([graph.dstdata['neigh'], graph.dstdata['edge']], dim = 1)
-
+           
         else:
             raise KeyError(
                 'Aggregator type {} not recognized.'.format(

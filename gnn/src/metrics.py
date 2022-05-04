@@ -29,7 +29,7 @@ def get_recommendation_nids(y,
         cos = nn.CosineSimilarity(dim=1, eps=1e-6).to(environment.device)
         similarities = cos(
             y['customer'].reshape(-1, parameters.out_dim, 1),
-            y['article'].reshape(1, parameters.out_dim, -1)
+            torch.transpose(y['article'], 0, 1).reshape(1, parameters.out_dim, -1)
         )
 
         # Get the indexes of the best score
@@ -70,7 +70,8 @@ def get_recommendation_nids(y,
 def precision_at_k(
         recommendations: torch.tensor,
         customer_nids: torch.tensor,
-        dataset: Dataset):
+        dataset: Dataset,
+        parameters: Parameters):
     """
     Given the recommendations and the purchase list, computes precision at 6, 12, 24 & 48.
     """
@@ -92,7 +93,7 @@ def precision_at_k(
 
     precision_list = []
 
-    for k in [6, 12, 24, 48]:
+    for k in parameters.precision_cutoffs:
         precision = score_dataframe.apply(
             lambda x: np.sum(
                         np.where(

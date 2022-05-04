@@ -1,4 +1,5 @@
 
+import torch
 import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 
@@ -61,9 +62,9 @@ class ConvModel(nn.Module):
             self.layers.append(
                 dglnn.HeteroGraphConv(
                     {
-                        'buys': ConvLayer((dimension_dictionnary['customer'] + dimension_dictionnary['edge'], dimension_dictionnary['article']), dimension_dictionnary['hidden'], parameters),
-                        'is-bought-by': ConvLayer((dimension_dictionnary['article'] + dimension_dictionnary['edge'], dimension_dictionnary['customer']), dimension_dictionnary['hidden'], parameters),
-                        'will-buy': PassThrough((dimension_dictionnary['article'] + dimension_dictionnary['edge'], dimension_dictionnary['customer']), dimension_dictionnary['hidden'], parameters)
+                        'buys': ConvLayer((dimension_dictionnary['customer'], dimension_dictionnary['article'], dimension_dictionnary['edge']), dimension_dictionnary['hidden'], parameters),
+                        'is-bought-by': ConvLayer((dimension_dictionnary['article'], dimension_dictionnary['customer'], dimension_dictionnary['edge']), dimension_dictionnary['hidden'], parameters),
+                        #'will-buy': PassThrough((dimension_dictionnary['article'], dimension_dictionnary['customer'], dimension_dictionnary['edge']), dimension_dictionnary['hidden'], parameters)
                     },
                     aggregate=parameters.aggregator_hetero
                 )
@@ -74,9 +75,9 @@ class ConvModel(nn.Module):
             self.layers.append(
                 dglnn.HeteroGraphConv(
                     {
-                        'buys': ConvLayer((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['hidden'], parameters),
-                        'is-bought-by': ConvLayer((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['hidden'], parameters),
-                        'will-buy': PassThrough((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['hidden'], parameters)
+                        'buys': ConvLayer((dimension_dictionnary['hidden'], dimension_dictionnary['hidden'], dimension_dictionnary['edge']), dimension_dictionnary['hidden'], parameters),
+                        'is-bought-by': ConvLayer((dimension_dictionnary['hidden'], dimension_dictionnary['hidden'], dimension_dictionnary['edge']), dimension_dictionnary['hidden'], parameters),
+                        #'will-buy': PassThrough((dimension_dictionnary['hidden'], dimension_dictionnary['hidden'], dimension_dictionnary['edge']), dimension_dictionnary['hidden'], parameters)
                     },
                     aggregate=parameters.aggregator_hetero
                 )
@@ -86,9 +87,9 @@ class ConvModel(nn.Module):
         self.layers.append(
             dglnn.HeteroGraphConv(
                 {
-                        'buys': ConvLayer((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['out'], parameters),
-                        'is-bought-by': ConvLayer((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['out'], parameters),
-                        'will-buy': PassThrough((dimension_dictionnary['hidden'] + dimension_dictionnary['edge'], dimension_dictionnary['hidden']), dimension_dictionnary['out'], parameters)
+                        'buys': ConvLayer((dimension_dictionnary['hidden'], dimension_dictionnary['hidden'], dimension_dictionnary['edge']), dimension_dictionnary['out'], parameters),
+                        'is-bought-by': ConvLayer((dimension_dictionnary['hidden'], dimension_dictionnary['hidden'], dimension_dictionnary['edge']), dimension_dictionnary['out'], parameters),
+                        #'will-buy': PassThrough((dimension_dictionnary['hidden'], dimension_dictionnary['hidden'], dimension_dictionnary['edge']), dimension_dictionnary['out'], parameters)
                 },
                 aggregate=parameters.aggregator_hetero
                 )
@@ -110,6 +111,9 @@ class ConvModel(nn.Module):
         if self.embedding_layer:
             h['customer'] = self.user_embed(h['customer'])
             h['article'] = self.item_embed(h['article'])
+        else :
+            h['customer'] = h['customer'].to(torch.float32)
+            h['article'] = h['article'].to(torch.float32)
             
         for i in range(len(self.layers)):
             layer = self.layers[i]

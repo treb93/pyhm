@@ -45,9 +45,9 @@ def train_loop(model: ConvModel,
             - Using the patience parameter, early stopping is applied when val_loss stops going down.
     """
     model.train_loss_list = []
-    model.train_precision_lists = [[],[],[],[]] # We monitor cutoffs 6, 12, 24, 48. 
+    model.train_precision_lists = [[] for i in parameters.precision_cutoffs] # We monitor cutoffs 6, 12, 24. 
     model.val_loss_list = []
-    model.val_precision_lists = [[],[],[],[]] # We monitor cutoffs 6, 12, 24, 48. 
+    model.val_precision_lists = [[] for i in parameters.precision_cutoffs] # We monitor cutoffs 6, 12, 24. 
     best_metrics = {}  # For visualization
     max_metric = -0.1
     patience_counter = 0  # For early stopping
@@ -167,7 +167,7 @@ def train_loop(model: ConvModel,
 
         ############
         # METRICS
-        if get_metrics and (epoch % 10 == 5 or epoch == parameters.num_epochs - 1):
+        if get_metrics and (epoch % 5 == 4 or epoch == parameters.num_epochs - 1):
             
             model.eval()
             with torch.no_grad():
@@ -186,7 +186,7 @@ def train_loop(model: ConvModel,
                     new_recommendations = get_recommendation_nids({
                         'article': graphs.prediction_graph.nodes['article'].data['h'].to(environment.device),
                         'customer': graphs.prediction_graph.nodes['customer'].data['h'][customer_nids].to(environment.device),
-                    }, parameters, environment, cutoff = 48)
+                    }, parameters, environment, cutoff = max(parameters.precision_cutoffs))
                     
                     recommendation_chunks.append(new_recommendations)
 
@@ -196,7 +196,7 @@ def train_loop(model: ConvModel,
                     if current_index % 5000 == 0 or current_index + customers_per_batch < length:
                         recommendations = torch.cat(recommendation_chunks, dim = 0)
                         
-                        precision = precision_at_k(recommendations, customer_nids, dataset)
+                        precision = precision_at_k(recommendations, customer_nids, dataset, parameters)
                         
                         if current_index == 0:
                             precision_list = np.array([precision])
@@ -235,7 +235,7 @@ def train_loop(model: ConvModel,
                     if current_index % 5000 == 0:
                         recommendations = torch.cat(recommendation_chunks, dim = 0)
                         
-                        precision = precision_at_k(recommendations, customer_nids, dataset)
+                        precision = precision_at_k(recommendations, customer_nids, dataset, parameters)
                                                 
                         if current_index == 0:
                             precision_list = np.array([precision])
@@ -248,7 +248,7 @@ def train_loop(model: ConvModel,
                     
                 valid_precision_at_k = np.mean(precision_list, axis = 0)
                 
-                sentence = f"\rEpoch {parameters.start_epoch + epoch:05d} || TRAINING Loss {train_avg_loss:.5f} | Precision at 6 / 12 / 24 / 48 - {train_precision_at_k[0] * 100:.3f}% / {train_precision_at_k[1] * 100:.3f}% / {train_precision_at_k[2] * 100:.3f}% / {train_precision_at_k[3] * 100:.3f}% || VALIDATION Loss {valid_avg_loss:.5f} | Precision at 6 / 12 / 24 / 48 - {valid_precision_at_k[0] * 100:.3f}% / {valid_precision_at_k[1] * 100:.3f}% / {valid_precision_at_k[2] * 100:.3f}% / {valid_precision_at_k[3] * 100:.3f}% "
+                sentence = f"\rEpoch {parameters.start_epoch + epoch:05d} || TRAINING Loss {train_avg_loss:.5f} | Precision at 6 / 12 / 24 - {train_precision_at_k[0] * 100:.3f}% / {train_precision_at_k[1] * 100:.3f}% / {train_precision_at_k[2] * 100:.3f}% || VALIDATION Loss {valid_avg_loss:.5f} | Precision at 6 / 12 / 24 - {valid_precision_at_k[0] * 100:.3f}% / {valid_precision_at_k[1] * 100:.3f}% / {valid_precision_at_k[2] * 100:.3f}% "
                 print(sentence)
                 save_txt(sentence, environment.result_filepath, mode='a')
         
@@ -257,13 +257,12 @@ def train_loop(model: ConvModel,
                     model.val_precision_lists[i].append(valid_precision_at_k[i] * 100)
 
                 # Visualization of best metric
-                if np.sum(valid_precision_at_k) / 4 > max_metric:
-                    max_metric = np.sum(valid_precision_at_k) / 4
+                if valid_precision_at_k[1] > max_metric:
+                    max_metric = valid_precision_at_k[1]
                     best_metrics = {
                         'precision_6': valid_precision_at_k[0],
                         'precision_12': valid_precision_at_k[1],
-                        'precision_24': valid_precision_at_k[2],
-                        'precision_48': valid_precision_at_k[3],
+                        'precision_24': valid_precision_at_k[2]
                     }
 
             print("Save model.")

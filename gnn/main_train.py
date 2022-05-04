@@ -104,7 +104,7 @@ def launch_training(
 
     # Get viz & metrics
     if visualization:
-        plot_train_loss(hyperparameters_text, viz)
+        plot_train_loss(hyperparameters_text, viz, parameters)
 
     # Report performance on validation set
     sentence = f"BEST VALIDATION Precision at 6 / 12 / 24 / 48 - {best_metrics['precision_6'] * 100:.3f}% / {best_metrics['precision_12'] * 100:.3f}%  / {best_metrics['precision_24'] * 100:.3f}%  / {best_metrics['precision_48'] * 100:.3f}% "

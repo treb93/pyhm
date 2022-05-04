@@ -5,6 +5,6 @@ pickles
 gnn/outputs
 gnn/plots
 gnn/models
-gnn/checkpoints
+gnn/checkpoint*
 __pycache__
 submissions

@@ -95,19 +95,11 @@ def train(dataset: Dataset,
 
     # Can't handle too big GNN for the moment.
     # TODO: Handle this cases
-    if(search_params['embed_dim'] == 'Very Large' and search_params['n_layers'] > 3):
-        return 0
-    if(search_params['embed_dim'] == 'Large' and search_params['n_layers'] > 4):
+    if isSearchTooHeavy(search_params):
         return 0
 
-    if parameters.duplicates == 'count_occurrence':
-        search_params['aggregator_type'] += '_edge'
-
-    # Make sure graph data is consistent with message passing parameters
-    if parameters.duplicates == 'count_occurrence':
-        assert search_params['aggregator_type'].endswith('edge')
-    else:
-        assert not search_params['aggregator_type'].endswith('edge')
+    if search_params['aggregator_weighted'] == True:
+        search_params['aggregator_type'] += '_weighted'
 
     parameters.update(search_params)
 
@@ -152,10 +144,10 @@ def train(dataset: Dataset,
     save_txt(result_to_save, environment.result_filepath, mode='a')
 
     if visualization:
-        plot_train_loss(hp_sentence, viz)
+        plot_train_loss(hp_sentence, viz, parameters)
 
     # Report performance on validation set
-    sentence = f"BEST VALIDATION Precision at 6 / 12 / 24 / 48 {best_metrics['precision_6'] * 100:.3f}% / {best_metrics['precision_12'] * 100:.3f}%  / {best_metrics['precision_24'] * 100:.3f}%  / {best_metrics['precision_48'] * 100:.3f}% "
+    sentence = f"BEST VALIDATION Precision at 6 / 12 / 24 {best_metrics['precision_6'] * 100:.3f}% / {best_metrics['precision_12'] * 100:.3f}%  / {best_metrics['precision_24'] * 100:.3f}% "
 
     # log.info(sentence)
     save_txt(sentence, environment.result_filepath, mode='a')
@@ -185,6 +177,7 @@ def train(dataset: Dataset,
     del graphs
 
     return mean_precision
+
 
 
 class SearchableHyperparameters:
@@ -229,12 +222,13 @@ class SearchableHyperparameters:
         self.aggregator_type = Categorical(
             categories=[
                 'mean',
-                'mean_weighted',
-                #'lstm',
-                #'mean_nn',
-                #'pool_nn'
+                'lstm',
+                'mean_nn',
+                'pool_nn'
                 ],
             name='aggregator_type')  # LSTM?
+        
+        self.aggregator_weighted = Categorical(categories=[True, False], name='aggregator_weighted')
         self.delta = Real(low=0.15, high=0.35, prior='log-uniform',
                           name='delta')
         self.dropout = Real(low=0., high=0.8, prior='uniform',
@@ -247,8 +241,8 @@ class SearchableHyperparameters:
                 'Large',
                 'Very Large'],
             name='embed_dim')
-        #self.embedding_layer = Categorical(
-        #    categories=[True, False], name='embedding_layer')
+        self.embedding_layer = Categorical(
+            categories=[True, False], name='embedding_layer')
         self.lr = Real(low=1e-4, high=1e-2, prior='log-uniform', name='lr')
         self.n_layers = Integer(low=3, high=5, name='n_layers')
         self.neg_sample_size = Integer(low=700, high=3000,
@@ -260,13 +254,27 @@ class SearchableHyperparameters:
         # This is equivalent to [self.hidden_dim_HP, self.out_dim_HP ...]
         self.dimensions = [self.__getattribute__(attr)
                            for attr in dir(self) if '__' not in attr]
-        self.default_parameters = ['mean', 'mean_weighted', 0.32632552494790934, 0.16394723840401731,
-                                   'Very Small', 0.002739258439775962, 3, 1606, False,]
+        self.default_parameters = ['mean', 'pool_nn', True, 0.32632552494790934, 0.16394723840401731,
+                                   'Medium', False, 0.002739258439775962, 4, 1606, False,]
 
 
 searchable_params = SearchableHyperparameters()
 fitness_params = None
 
+def isSearchTooHeavy(search_params: SearchableHyperparameters):
+    """ Returns True if the Search parameters are going to blow up the computer. """
+    n_layers = search_params['n_layers'] + (1 if search_params['embedding_layer'] == False else 0)
+    
+    if(search_params['embed_dim'] == 'Very Large' and n_layers > 3):
+        return True
+    
+    if(search_params['embed_dim'] == 'Large' and n_layers > 3):
+        return True
+    
+    if(search_params['aggregator_type'] == 'lstm' and n_layers > 4):
+        return True
+
+    
 
 @use_named_args(dimensions=searchable_params.dimensions)
 def fitness(**search_params):

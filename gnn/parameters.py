@@ -49,6 +49,8 @@ class Parameters():
         self.customers_without_prediction_ratio = 0
         self.embedding_on_full_set = False
         self.batches_per_embedding = 3
+        
+        self.precision_cutoffs = [6, 12, 24]
 
         self.update(new_parameters)
 

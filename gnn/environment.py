@@ -3,7 +3,7 @@ import torch
 
 class Environment:
     def __init__(self):
-        self.transactions_path = "../pickles/transactions.pkl"
+        self.transactions_path = "../pickles/transactions_without_outliers.pkl"
         self.customers_path = "../pickles/customers_gnn_full.pkl"
         self.articles_path = "../pickles/articles_gnn_medium.pkl"
 
