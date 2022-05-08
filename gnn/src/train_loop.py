@@ -7,6 +7,7 @@ import dgl
 import numpy as np
 import torch
 from environment import Environment
+from src.get_overall_metrics import get_overall_metrics
 from src.classes.graphs import Graphs
 from parameters import Parameters
 from src.classes.dataloaders import DataLoaders
@@ -15,6 +16,8 @@ from src.model.conv_model import ConvModel
 
 from src.metrics import get_recommendation_nids, precision_at_k
 from src.utils import save_txt
+
+import gc
 
 
 def train_loop(model: ConvModel,
@@ -59,13 +62,12 @@ def train_loop(model: ConvModel,
     # Assign prediction layer to GPU.
     model.prediction_fn.to(environment.device)
 
+
+    # if parameters.use_neighbor_sampling:
+    #     model.to(environment.device)
+
     # TRAINING
     print('Starting training.')
-    
-    embeddings = model.get_embeddings(graphs.history_graph, {
-                    'article': graphs.history_graph.nodes['article'].data['features'],
-                    'customer': graphs.history_graph.nodes['customer'].data['features'],
-                })
     
     for epoch in range(parameters.num_epochs):
         start_time = time.time()
@@ -81,34 +83,52 @@ def train_loop(model: ConvModel,
         for _, pos_g, neg_g, blocks in dataloaders.dataloader_train_loss:
             i += 1
             
-            # Process embeddings and initialize score tensors.
-            if (i % parameters.batches_per_embedding == parameters.batches_per_embedding - 1) or (i == dataloaders.num_batches_train):
+            # Process embeddings and save it to graph.
+            # if parameters.neighbor_sampling:
+            #     # for b in range(len(blocks)):
+            #     #     blocks[b] = blocks[b].to(environment.device)
+            #     
+# 
+            #     embeddings = model.get_embeddings(blocks, blocks[0].srcdata['features'])
+            #     
+            #     # Update graph with new embeddings.
+            #     graphs.full_graph.nodes['article'].data['h'][article_nids] = embeddings['article']
+            #     graphs.full_graph.nodes['customer'].data['h'][customer_nids] = embeddings['customer']
+            #     
+            #     # Update batch graphs.
+            #     pos_g.nodes['article'].data['h'] = embeddings['article']
+            #     pos_g.nodes['customer'].data['h'] = embeddings['customer']
+            #     
+            #     neg_g.nodes['article'].data['h'] = embeddings['article']
+            #     neg_g.nodes['customer'].data['h'] = embeddings['customer']
+            #     
+            # else:
+            # Process embeddings at n iterations only.
+            if (i % parameters.batches_per_embedding == 1) or (i == dataloaders.num_batches_train):
                 print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Get embeddings...                   ", end ="")
                 
                 if i > 1:
                     del embeddings
-                
+
                 embeddings = model.get_embeddings(graphs.history_graph, {
                     'article': graphs.history_graph.nodes['article'].data['features'],
                     'customer': graphs.history_graph.nodes['customer'].data['features'],
                 })
+            
+ 
+            
+
                 
-                print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Save embeddings on graph...                   ", end ="")
-                graphs.prediction_graph.nodes['article'].data['h'] = embeddings['article'][0:graphs.prediction_graph.num_nodes('article')]
-                graphs.prediction_graph.nodes['customer'].data['h'] = embeddings['customer'][0:graphs.prediction_graph.num_nodes('customer')]
-                    
-            
-            
-            print(f"\rProcess train batch {i} / {dataloaders.num_batches_train}                   ", end ="")
+            print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Get scores...                   ", end ="")
 
             pos_score, neg_score = model(pos_g, neg_g, embeddings)
             pos_score_cat = torch.cat([pos_score_cat, pos_score])
             neg_score_cat = torch.cat([neg_score_cat, neg_score])
            
-                    
-                    
+            
             # Proceed to gradient descent. 
-            if (i % parameters.batches_per_embedding == parameters.batches_per_embedding - 1) or (i == dataloaders.num_batches_train):
+            if (i % parameters.batches_per_embedding == 0) or (i == dataloaders.num_batches_train):
+                #or parameters.neighbor_sampling 
                 print(f"\rTrain batch {i} / {dataloaders.num_batches_train} : Calculate loss...                   ", end ="")
 
                 loss = loss_fn(pos_score,
@@ -133,25 +153,42 @@ def train_loop(model: ConvModel,
         train_avg_loss = total_loss / i
         model.train_loss_list.append(train_avg_loss)
 
+        del embeddings
+
         print("\r Process valid batches...              ", end="")
         if get_metrics:
             model.eval()
             with torch.no_grad():
                 total_loss = 0
                 i = 0
+                
+                # Refresh embeddins without dropout.
+                # if parameters.neighbor_sampling == False:
+                embeddings = model.get_embeddings(graphs.history_graph, {
+                        'article': graphs.history_graph.nodes['article'].data['features'],
+                        'customer': graphs.history_graph.nodes['customer'].data['features'],
+                    })
+ 
 
-        
                 for _, pos_g, neg_g, blocks in dataloaders.dataloader_valid_loss:
                     i += 1
                     print(f"\rProcess valid batch {i} / {dataloaders.num_batches_valid}             ", end ="")
 
-                    pos_g
-                    neg_g
-                    
+                    # if parameters.neighbor_sampling:
+                    #     # Process embeddings from batch.
+                    #     embeddings = model.get_embeddings(blocks, blocks[0].srcdata['features'])
+                    #     
+                    #     # Update positive graph.
+                    #     pos_g.nodes['article'].data['h'] = embeddings['article']
+                    #     pos_g.nodes['customer'].data['h'] = embeddings['customer']
+# 
+                    pos_g.nodes['article'].data['h'] = embeddings['article'][pos_g.nodes['article'].data['_ID'].long()]
+                    pos_g.nodes['customer'].data['h'] = embeddings['customer'][pos_g.nodes['customer'].data['_ID'].long()]
+                     
                     pos_score = model.prediction_fn(pos_g)
                     
-                    neg_g.nodes['article'].data['h'] = graphs.prediction_graph.nodes['article'].data['h'][neg_g.nodes['article'].data['_ID'].long()]
-                    neg_g.nodes['customer'].data['h'] = graphs.prediction_graph.nodes['customer'].data['h'][neg_g.nodes['customer'].data['_ID'].long()]
+                    neg_g.nodes['article'].data['h'] = embeddings['article'][neg_g.nodes['article'].data['_ID'].long()]
+                    neg_g.nodes['customer'].data['h'] = embeddings['customer'][neg_g.nodes['customer'].data['_ID'].long()]
                     
                     neg_score = model.prediction_fn(neg_g)
 
@@ -165,90 +202,22 @@ def train_loop(model: ConvModel,
                 valid_avg_loss = total_loss / i
                 model.val_loss_list.append(valid_avg_loss)
 
+        # Update graph.
+        graphs.prediction_graph.nodes['article'].data['h'] = embeddings['article'][0:graphs.prediction_graph.num_nodes('article')]
+        graphs.prediction_graph.nodes['customer'].data['h'] = embeddings['customer'][0:graphs.prediction_graph.num_nodes('customer')]
+        del embeddings
+
         ############
         # METRICS
-        if get_metrics and (epoch % 5 == 4 or epoch == parameters.num_epochs - 1):
-            
+        if get_metrics and (epoch % 10 == 9 or epoch == parameters.num_epochs - 1):
+                
             model.eval()
             with torch.no_grad():
                 
-                customers_per_batch = 200
-                current_index = 0
-                length = len(dataset.customers_nid_train)
-
-                recommendation_chunks = []
-
-                while current_index < length :
-                    
-                    customer_nids = dataset.customers_nid_train[current_index: current_index + customers_per_batch]
-                    
-                    print(f"\rProcessing train recommendations for customers {current_index} - {current_index + customers_per_batch}            ", end = "")
-                    new_recommendations = get_recommendation_nids({
-                        'article': graphs.prediction_graph.nodes['article'].data['h'].to(environment.device),
-                        'customer': graphs.prediction_graph.nodes['customer'].data['h'][customer_nids].to(environment.device),
-                    }, parameters, environment, cutoff = max(parameters.precision_cutoffs))
-                    
-                    recommendation_chunks.append(new_recommendations)
-
-                    customer_nids = range(current_index, current_index + customers_per_batch)
-
-
-                    if current_index % 5000 == 0 or current_index + customers_per_batch < length:
-                        recommendations = torch.cat(recommendation_chunks, dim = 0)
-                        
-                        precision = precision_at_k(recommendations, customer_nids, dataset, parameters)
-                        
-                        if current_index == 0:
-                            precision_list = np.array([precision])
-                        else: 
-                            precision_list = np.append(precision_list, [precision], axis = 0)
-                        
-                        recommendation_chunks = []
-                    
-                    current_index += customers_per_batch
-                      
-                train_precision_at_k = np.mean(precision_list, axis = 0)
-
-
-                # validation metrics
+                train_precision_at_k = get_overall_metrics(dataset.customers_nid_train, dataset, graphs, model, parameters, environment)
+                valid_precision_at_k = get_overall_metrics(dataset.customers_nid_valid, dataset, graphs, model, parameters, environment)
                 
-                batch_index = 0
-                
-                customers_per_batch = 200
-                current_index = 0
-                length = len(dataset.customers_nid_valid)
-
-                recommendation_chunks = []
-
-                while current_index < length :
-                    
-                    customer_nids = dataset.customers_nid_valid[current_index: current_index + customers_per_batch]
-                    
-                    print(f"\rProcessing valid recommendations for customers {current_index} - {current_index + customers_per_batch}                     ", end = "")
-                    new_recommendations = get_recommendation_nids({
-                        'article': graphs.prediction_graph.nodes['article'].data['h'].to(environment.device),
-                        'customer': graphs.prediction_graph.nodes['customer'].data['h'][customer_nids].to(environment.device),
-                    }, parameters, environment, cutoff = 48)
-                    
-                    recommendation_chunks.append(new_recommendations)
-
-                    if current_index % 5000 == 0:
-                        recommendations = torch.cat(recommendation_chunks, dim = 0)
-                        
-                        precision = precision_at_k(recommendations, customer_nids, dataset, parameters)
-                                                
-                        if current_index == 0:
-                            precision_list = np.array([precision])
-                        else: 
-                            precision_list = np.append(precision_list, [precision], axis = 0)
-                        
-                        recommendation_chunks = []
-                    
-                    current_index += customers_per_batch
-                    
-                valid_precision_at_k = np.mean(precision_list, axis = 0)
-                
-                sentence = f"\rEpoch {parameters.start_epoch + epoch:05d} || TRAINING Loss {train_avg_loss:.5f} | Precision at 6 / 12 / 24 - {train_precision_at_k[0] * 100:.3f}% / {train_precision_at_k[1] * 100:.3f}% / {train_precision_at_k[2] * 100:.3f}% || VALIDATION Loss {valid_avg_loss:.5f} | Precision at 6 / 12 / 24 - {valid_precision_at_k[0] * 100:.3f}% / {valid_precision_at_k[1] * 100:.3f}% / {valid_precision_at_k[2] * 100:.3f}% "
+                sentence = f"\rEpoch {parameters.start_epoch + epoch:05d} || TRAINING Loss {train_avg_loss:.5f} | Precision at 3 / 6 / 12 - {train_precision_at_k[0] * 100:.3f}% / {train_precision_at_k[1] * 100:.3f}% / {train_precision_at_k[2] * 100:.3f}% || VALIDATION Loss {valid_avg_loss:.5f} | Precision at 3 / 6 / 12 - {valid_precision_at_k[0] * 100:.3f}% / {valid_precision_at_k[1] * 100:.3f}% / {valid_precision_at_k[2] * 100:.3f}% "
                 print(sentence)
                 save_txt(sentence, environment.result_filepath, mode='a')
         
@@ -260,9 +229,9 @@ def train_loop(model: ConvModel,
                 if valid_precision_at_k[1] > max_metric:
                     max_metric = valid_precision_at_k[1]
                     best_metrics = {
-                        'precision_6': valid_precision_at_k[0],
-                        'precision_12': valid_precision_at_k[1],
-                        'precision_24': valid_precision_at_k[2]
+                        'precision_3': valid_precision_at_k[0],
+                        'precision_6': valid_precision_at_k[1],
+                        'precision_12': valid_precision_at_k[2]
                     }
 
             print("Save model.")
@@ -282,17 +251,24 @@ def train_loop(model: ConvModel,
             patience_counter += 1
         if patience_counter == parameters.patience:
             print("Lost patience.")
+            best_metrics['lost_patience'] = True
             break
 
         elapsed = time.time() - start_time
         result_to_save = f'Epoch took {timedelta(seconds=elapsed)} \n'
         print(result_to_save)
         save_txt(result_to_save, environment.result_filepath, mode='a')
+        
+        # Clear memory.
+        gc.collect()
+        torch.cuda.empty_cache()
 
     viz = {'train_loss_list': model.train_loss_list,
            'train_precision_lists': model.train_precision_lists,
            'val_loss_list': model.val_loss_list,
            'val_precision_lists': model.val_precision_lists}
+
+    best_metrics['min_loss'] = min_loss
 
     print('Training completed.')
     return model, viz, best_metrics

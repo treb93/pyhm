@@ -140,7 +140,7 @@ class ConvLayer(nn.Module):
         h_neigh, h_self = h
         h_neigh = self.dropout_fn(h_neigh)
         h_self = self.dropout_fn(h_self)
-
+        
         graph.update_all(fn.copy_e('features', 'm_e'), fn.mean('m_e', 'edge'))
             
         if self._aggre_type == 'mean':

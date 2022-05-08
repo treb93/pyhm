@@ -107,7 +107,7 @@ def launch_training(
         plot_train_loss(hyperparameters_text, viz, parameters)
 
     # Report performance on validation set
-    sentence = f"BEST VALIDATION Precision at 6 / 12 / 24 / 48 - {best_metrics['precision_6'] * 100:.3f}% / {best_metrics['precision_12'] * 100:.3f}%  / {best_metrics['precision_24'] * 100:.3f}%  / {best_metrics['precision_48'] * 100:.3f}% "
+    sentence = f"BEST VALIDATION Precision at 3 / 6 / 12  - {best_metrics['precision_3'] * 100:.3f}% / {best_metrics['precision_6'] * 100:.3f}%  / {best_metrics['precision_12'] * 100:.3f}% "
 
     log.info(sentence)
     save_txt(sentence, environment.result_filepath, mode='a')
@@ -156,15 +156,7 @@ def main(
 
     environment = Environment()
 
-    parameters = Parameters({
-        'aggregator_hetero': 'mean',
-        'aggregator_type': 'mean',
-        'delta': 0.266,
-        'embedding_layer': True,
-        'lr': 0.001,
-        'batches_per_embedding': 1,
-        'num_epochs': 3
-    })
+    parameters = Parameters({})
 
     launch_training(
         environment=environment,

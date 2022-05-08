@@ -38,12 +38,13 @@ def plot_train_loss(hp_sentence, viz, parameters: Parameters):
         fig.tight_layout()
         plt.rcParams["axes.titlesize"] = 6
         
-        for i in range(len(viz['train_precision_lists'])):   
+        for i in [0, 1]:   
             k = parameters.precision_cutoffs[i] 
             
             plt.plot(x, viz['train_precision_lists'][i], label = f"Train precision at {k}")
             plt.plot(x, viz['val_precision_lists'][i], label = f"Valid precision at {k}")
             
+        plt.ylim(0, 8)
         plt.legend(loc='upper left')
         plt.savefig('plots/' + str(datetime.now())[:-10] + 'metrics.png')
         plt.close(fig)

@@ -36,18 +36,13 @@ class PassThrough(nn.Module):
         # nn.init.xavier_uniform_(self.fc_edge.weight, gain=gain)
 
     def __init__(self,
-                 in_feats: Tuple[int, int],
                  out_feats: int,
                  parameters: Parameters
                  ):
         super().__init__()
         self._out_feats = out_feats
+        self.aggregator_hetero = parameters.aggregator_hetero
         
-        if parameters.aggregator_type == 'lstm':
-            self.lstm = nn.LSTM(
-                self._in_neigh_feats,
-                self._in_neigh_feats,
-                batch_first=True)
         self.reset_parameters()
 
     def forward(self,
@@ -55,4 +50,4 @@ class PassThrough(nn.Module):
                 h):
         
 
-        return torch.zeros(h[1].shape[0], self._out_feats)
+        return (torch.zeros(h[1].shape[0], self._out_feats) - (32 if self.aggregator_hetero == 'max' else 0))

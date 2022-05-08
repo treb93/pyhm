@@ -16,7 +16,8 @@ from dgl import DGLHeteroGraph
 def get_recommendation_nids(y,
                               parameters: Parameters,
                               environment: Environment,
-                              cutoff = 12
+                              model: ConvModel,
+                              cutoff = 12,
                               ) -> torch.tensor:
     """
     Computes K recommendations for all users, given hidden states.
@@ -32,31 +33,31 @@ def get_recommendation_nids(y,
             torch.transpose(y['article'], 0, 1).reshape(1, parameters.out_dim, -1)
         )
 
-        # Get the indexes of the best score
+        # Get the indexes of the best scores.
         recommandations = torch.argsort(
-            similarities, dim=1, descending=True)[:, 0:48].int()
+            similarities, dim=1, descending=True)[:, 0:cutoff].int().cpu().numpy()
 
         # Replace the indexes by real article ids.
-        #recommandations = node_ids['article'][recommandations[:]]
+        #recommandations = articles_nid[recommandations[:]]
 
-    #elif parameters.prediction_layer == 'nn':
+    elif parameters.prediction_layer == 'nn':
     #    # TODO: Cette boucle coûte très cher. Voir si on peut les faire tous
     #    # d'un coup
-    #    for user_id in node_ids['customer']:
+        for customer_embedding in y['customer']:
     #        counter = counter + 1
     #        print(f"Customer n°{counter}")
     #        user_emb = y['customer'][user_id]
 #
-    #        user_emb_rpt = torch.cat(
-    #            len(node_ids['article']) * [user_emb]).reshape(-1, parameters.embed_dim)
-#
-    #        cat_embed = torch.cat((user_emb_rpt, y['article']), 1)
-    #        ratings = model.predict.layer_nn(cat_embed)
-#
-    #        ratings_formatted = ratings.cpu().detach(
-    #        ).numpy().reshape(len(node_ids['article']),)
-#
-    #        order = node_ids['customer'][np.argsort(-ratings_formatted)]
+
+            user_emb_rpt = torch.cat(
+                y['article'].shape[0] * [customer_embedding]).reshape(-1, parameters.embed_dim)
+
+            cat_embed = torch.cat((user_emb_rpt, y['article']), 1)
+            ratings = model.predict.layer_nn(cat_embed)
+
+            ratings_formatted = ratings.cpu().detach().numpy().reshape(1, y['article'].shape[0])
+
+            order = np.argsort(-ratings_formatted)[:, 0:cutoff]
 #
     #        rec = order[:parameters.k]
     #        recommandations[user_id] = rec
@@ -73,7 +74,7 @@ def precision_at_k(
         dataset: Dataset,
         parameters: Parameters):
     """
-    Given the recommendations and the purchase list, computes precision at 6, 12, 24 & 48.
+    Given the recommendations and the purchase list, computes precision at chosen cutoffs (defined in parameters).
     """
 
     # Builds a dataset for having both purchase list and prediction list aside.
@@ -82,10 +83,10 @@ def precision_at_k(
         pd.Series(recommendations.tolist()).rename('prediction')
     ], axis=1)
     
-    score_dataframe['prediction'] = score_dataframe['prediction'].fillna("").apply(list)
+    #score_dataframe['prediction'] = score_dataframe['prediction'].fillna("").apply(list)
 
     score_dataframe = score_dataframe.merge(
-        dataset._purchased_list, on='customer_nid', how='left')
+        dataset.purchased_list, on='customer_nid', how='left')
     
     score_dataframe['prediction_length'] = score_dataframe['prediction'].apply(lambda x: len(x) if x else 0)
 
@@ -101,10 +102,12 @@ def precision_at_k(
                             1,
                             0
                         ) for i in range(min(k, x['prediction_length']))
-                    ) / min(k, len(x['prediction']), x['length']), 
+                    ) / min(k, x['length'], x['prediction_length']),
             axis=1)
         
         precision_list.append(precision.mean())
+        
+    del score_dataframe
         
     return precision_list
 

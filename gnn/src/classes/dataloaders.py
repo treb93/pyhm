@@ -39,24 +39,29 @@ class DataLoaders():
         """
 
         # Define the number of layers depending on the model's structure.
-        n_layers = parameters.n_layers
-        if parameters.embedding_layer:
-            n_layers = n_layers - 1
+        n_layers = parameters.n_layers 
+        if not parameters.embedding_layer:
+            n_layers = n_layers + 1
 
         # TODO: Update hardcoded numbers with params
+        #if parameters.neighbor_sampling:
+        #    edge_sampler = dgl.dataloading.NeighborSampler([parameters.neighbor_sampling for i in range(n_layers )])
+        #else:
         edge_sampler = dgl.dataloading.NeighborSampler([0])
-        node_sampler = dgl.dataloading.NeighborSampler([5, 5, 0, 0])
+            
+        node_sampler = dgl.dataloading.NeighborSampler([*[1 for i in range(n_layers - 1)], 10])
 
         # Batch size parameter corresponds to the positive edges, whereas our parameter corresponds to the total batch size. 
         edge_pos_size = parameters.edge_batch_size // (parameters.neg_sample_size + 1)
+
+        print("Batch size: ", edge_pos_size)
 
         negative_sampler = dgl.dataloading.as_edge_prediction_sampler(
             edge_sampler, negative_sampler=dgl.dataloading.negative_sampler.Uniform(
                 parameters.neg_sample_size))
 
-        print("Batch size: ", edge_pos_size)
-
         self._dataloader_train_loss = dgl.dataloading.DataLoader(
+            # graphs.full_graph if parameters.neighbor_sampling else 
             graphs.prediction_graph,
             {
                 'buys': th.tensor(dataset.purchases_to_predict.loc[dataset.purchases_to_predict['set'] == 0].index.values, dtype=th.int32)
@@ -70,6 +75,7 @@ class DataLoaders():
             num_workers=0)
 
         self._dataloader_valid_loss = dgl.dataloading.DataLoader(
+            # graphs.full_graph if parameters.neighbor_sampling else 
             graphs.prediction_graph,
             {
                 'buys': th.tensor(dataset.purchases_to_predict[dataset.purchases_to_predict['set'] == 1].index.values, dtype=th.int32)
@@ -89,7 +95,7 @@ class DataLoaders():
             },
             node_sampler,
             batch_size=parameters.embedding_batch_size,
-            shuffle=False,
+            shuffle=True,
             drop_last=False,
             num_workers=0)
 

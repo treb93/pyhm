@@ -2,9 +2,11 @@ import datetime
 from datetime import timedelta
 import logging
 import math
+from os import environ
 import time
 
 import click
+import pandas as pd
 import numpy as np
 from skopt import gp_minimize
 from skopt.space import Real, Integer, Categorical
@@ -92,17 +94,24 @@ def train(dataset: Dataset,
         'Very Large': 512}
     search_params['out_dim'] = out_dim[search_params['embed_dim']]
     search_params['hidden_dim'] = hidden_dim[search_params['embed_dim']]
+    
+    
+    if environment.search_result_path != "":
+        search_result_table = pd.read_pickle(environment.search_result_path)
+    else:
+        search_result_table = pd.DataFrame(columns = [*search_params.keys(), 'lost_patience', 'min_loss', 'precision'])
+        environment.search_result_path = '../pickles/search_result_table.pkl'
 
     # Can't handle too big GNN for the moment.
     # TODO: Handle this cases
     if isSearchTooHeavy(search_params):
-        return 0
+         return 0
 
     if search_params['aggregator_weighted'] == True:
         search_params['aggregator_type'] += '_weighted'
 
     parameters.update(search_params)
-
+    
     graphs = Graphs(dataset, parameters)
 
     dim_dict = get_dimension_dictionnary(graphs, parameters)
@@ -147,7 +156,7 @@ def train(dataset: Dataset,
         plot_train_loss(hp_sentence, viz, parameters)
 
     # Report performance on validation set
-    sentence = f"BEST VALIDATION Precision at 6 / 12 / 24 {best_metrics['precision_6'] * 100:.3f}% / {best_metrics['precision_12'] * 100:.3f}%  / {best_metrics['precision_24'] * 100:.3f}% "
+    sentence = f"BEST VALIDATION Precision at 3 / 6 / 12 {best_metrics['precision_3'] * 100:.3f}% / {best_metrics['precision_6'] * 100:.3f}%  / {best_metrics['precision_12'] * 100:.3f}% "
 
     # log.info(sentence)
     save_txt(sentence, environment.result_filepath, mode='a')
@@ -164,8 +173,24 @@ def train(dataset: Dataset,
         },
         'models/'
     )
+    
+    # Save result into a dataframe.
+    new_row = []
+    for key in search_params.keys():
+        new_row.append(search_params[key])
+        
+    new_row.append(True if 'lost_patience' in best_metrics.keys() else False)
+    new_row.append(best_metrics['min_loss'])
+    new_row.append((best_metrics['precision_6'] + best_metrics['precision_12']) / 2)
+        
+    new_row = pd.DataFrame([new_row], columns = [*search_params.keys(), 'lost_patience', 'min_loss', 'precision'])
+    search_result_table = pd.concat([search_result_table, new_row], axis = 0) 
+    
+    search_result_table.to_pickle(environment.search_result_path)
+    
 
-    mean_precision = (best_metrics['precision_6'] + best_metrics['precision_12'] + best_metrics['precision_24']) / 3
+
+    mean_precision = (best_metrics['precision_3'] + best_metrics['precision_6'] + best_metrics['precision_12']) / 3
 
     recap = f"BEST PRECISION on 1) Validation set : {mean_precision * 100:.2f}%"
     recap += f"\nLoop took {timedelta(seconds=elapsed)} for {len(viz['train_loss_list'])} epochs, an average of " \
@@ -175,6 +200,7 @@ def train(dataset: Dataset,
 
     del dataloaders
     del graphs
+    del model
 
     return mean_precision
 
@@ -218,44 +244,75 @@ class SearchableHyperparameters:
 
     def __init__(self):
         self.aggregator_hetero = Categorical(
-            categories=['mean', 'sum', 'max'], name='aggregator_hetero')
+            categories=[
+                'mean', 
+                'sum', 
+                'max'
+            ], name='aggregator_hetero')
         self.aggregator_type = Categorical(
             categories=[
                 'mean',
-                'lstm',
+                #'lstm',
                 'mean_nn',
                 'pool_nn'
                 ],
             name='aggregator_type')  # LSTM?
         
-        self.aggregator_weighted = Categorical(categories=[True, False], name='aggregator_weighted')
+        self.aggregator_weighted = Categorical(categories=[
+            True, 
+            False
+        ], name='aggregator_weighted')
         self.delta = Real(low=0.15, high=0.35, prior='log-uniform',
                           name='delta')
-        self.dropout = Real(low=0., high=0.8, prior='uniform',
+        self.dropout = Real(low=0.05, high=0.3, prior='uniform',
                             name='dropout')
         self.embed_dim = Categorical(
             categories=[
-                'Very Small',
-                'Small',
-                'Medium',
+                #'Very Small',
+                #'Small',
+                #'Medium',
                 'Large',
-                'Very Large'],
+                'Very Large'
+                ],
             name='embed_dim')
         self.embedding_layer = Categorical(
-            categories=[True, False], name='embedding_layer')
-        self.lr = Real(low=1e-4, high=1e-2, prior='log-uniform', name='lr')
-        self.n_layers = Integer(low=3, high=5, name='n_layers')
-        self.neg_sample_size = Integer(low=700, high=3000,
+            categories=[
+                True, 
+                False
+            ], name='embedding_layer')
+        self.lr = Real(low=1e-4, high=1e-3, prior='log-uniform', name='lr')
+        self.n_layers = Categorical(
+            categories=[
+                2,
+                3, 4
+                #, 5
+            ], name='n_layers')
+        
+        self.neg_sample_size = Integer(low=1500, high=2300,
                                        name='neg_sample_size')
-        self.norm = Categorical(categories=[True, False], name='norm')
+        self.neighbor_sampling = Categorical(
+            categories=[
+                #1, 2, 3, 
+                False
+            ], name='neighbor_sampling')
+        self.norm = Categorical(categories=[
+            True, 
+            # False
+        ], name='norm')
 
+        self.reduce_article_features = Categorical(
+            categories=[
+                True, 
+                False
+            ], name='reduce_article_features')
 
+        
         # List all the attributes in a list.
         # This is equivalent to [self.hidden_dim_HP, self.out_dim_HP ...]
         self.dimensions = [self.__getattribute__(attr)
                            for attr in dir(self) if '__' not in attr]
-        self.default_parameters = ['mean', 'pool_nn', True, 0.32632552494790934, 0.16394723840401731,
-                                   'Medium', False, 0.002739258439775962, 4, 1606, False,]
+        self.default_parameters = ['max', 'pool_nn', True, 0.3, 0.1,
+                                   'Very Large', False, 0.00015, 2, 1600, False, True, False]
 
 
 searchable_params = SearchableHyperparameters()
@@ -265,13 +322,18 @@ def isSearchTooHeavy(search_params: SearchableHyperparameters):
     """ Returns True if the Search parameters are going to blow up the computer. """
     n_layers = search_params['n_layers'] + (1 if search_params['embedding_layer'] == False else 0)
     
-    if(search_params['embed_dim'] == 'Very Large' and n_layers > 3):
+
+    if search_params['aggregator_type'] != 'mean':
+        if(search_params['embed_dim'] == 'Very Large' and n_layers > 3):
+            return True
+        
+        if(search_params['embed_dim'] == 'Large' and n_layers > 4):
+            return True
+
+    if(search_params['embed_dim'] == 'Medium' and n_layers > 4):
         return True
     
-    if(search_params['embed_dim'] == 'Large' and n_layers > 3):
-        return True
-    
-    if(search_params['aggregator_type'] == 'lstm' and n_layers > 4):
+    if(search_params['aggregator_type'] == 'lstm'):
         return True
 
     

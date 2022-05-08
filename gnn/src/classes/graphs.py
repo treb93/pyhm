@@ -20,6 +20,11 @@ class Graphs():
         """Graph with all purchases to predict, using link prediction."""
         return self._prediction_graph
 
+    @property
+    def full_graph(self) -> dgl.DGLHeteroGraph:
+        """Graph with all purchase data, used for both embedding and link prediction."""
+        return self._full_graph
+
 
     def __init__(self, dataset: Dataset, parameters: Parameters
                     ):
@@ -48,9 +53,14 @@ class Graphs():
                     dataset.purchase_history['customer_nid'].values,
                     dtype=th.int32),
             )
-            }
-
+            
+        }
+        
+ 
+        
+        # If we use neighbor sampling, we need to do embedding and link sampling on the same graph.
         history_graph = dgl.heterograph(
+            #prediction_data if parameters.neighbor_sampling else 
             history_data,
         )
         
@@ -85,8 +95,8 @@ class Graphs():
                 axis=1).values, dtype=th.float32)
         # Also use purchase amount as weight, i.e multiplication of the source message passing.
         history_graph.edges['is-bought-by'].data['weight'] = th.tensor(dataset.purchase_history['purchases'].values, dtype=th.float32)
-
-
+        
+        
         # If we have to calculate recommandations on full set, create a placeholder for embeddings.
         if parameters.embedding_on_full_set:
             history_graph.nodes['customer'].data['h'] = th.zeros((history_graph.num_nodes('customer'), parameters.out_dim))
@@ -105,17 +115,27 @@ class Graphs():
             )
         }
         
+        # If Neighbor Sampling is enabled, we use a single graph for embedding and prediction.
+        # if parameters.neighbor_sampling:
+        #     
+        #     # Create a placeholder for embeddings.
+        #     history_graph.nodes['customer'].data['h'] = th.zeros((history_graph.num_nodes('customer'), parameters.out_dim))
+        #     history_graph.nodes['article'].data['h'] = th.zeros((history_graph.num_nodes('article'), parameters.out_dim))
+        # 
+        #     self._history_graph = history_graph
+        #     self._full_graph = history_graph
+        # else:
         prediction_graph = dgl.heterograph(
             prediction_data,
         )
         
-        # Initialize embedding data on prediction graph.
-        prediction_graph.nodes['customer'].data['h'] = th.ones((prediction_graph.num_nodes('customer'), parameters.out_dim))
-        prediction_graph.nodes['article'].data['h'] = th.ones((prediction_graph.num_nodes('article'), parameters.out_dim))
+        # Create a placeholder for embeddings.
+        prediction_graph.nodes['customer'].data['h'] = th.zeros((prediction_graph.num_nodes('customer'), parameters.out_dim))
+        prediction_graph.nodes['article'].data['h'] = th.zeros((prediction_graph.num_nodes('article'), parameters.out_dim))
         
         self._history_graph = history_graph
         self._prediction_graph = prediction_graph
-        
+       
         
         del history_graph
         del prediction_graph
