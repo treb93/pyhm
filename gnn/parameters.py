@@ -3,10 +3,10 @@ import torch
 
 class Parameters():
     def __init__(self, new_parameters):
-        self.weeks_of_purchases = 75  # Max is 104
+        self.weeks_of_purchases = 54  # Max is 104
         self.duplicates = 'keep_all'  # 'keep_last', 'keep_all', 'count_occurrence'
         self.edge_batch_size = 4000000
-        self.embedding_batch_size = 70000
+        self.embedding_batch_size = 50000
         self.explore = True
         self.k = 12
         self.lifespan_of_items = 180
@@ -28,13 +28,13 @@ class Parameters():
         self.aggregator_hetero = 'max'
         self.aggregator_type = 'pool_nn'
         self.delta = 0.2
-        self.dropout = 0.2
+        self.dropout = 0.4
         self.hidden_dim = 192
         self.out_dim = 96
         self.embedding_layer = True
-        self.lr = 0.0003
+        self.lr = 0.0001
         self.n_layers = 2
-        self.neg_sample_size = 1200
+        self.neg_sample_size = 1800
         self.norm = True
         self.use_popularity = True
         self.weight_popularity = 0.5
@@ -45,7 +45,8 @@ class Parameters():
         self.num_workers = 0
         self.partial_sampling_num_neighbors = 5
         
-        self.customers_without_prediction_ratio = 0.5
+        self.include_last_week_in_history = False
+        self.customers_without_prediction_ratio = 5
         self.embedding_on_full_set = False
         self.batches_per_embedding = 3
         self.reduce_article_features = False

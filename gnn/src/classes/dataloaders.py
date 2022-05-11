@@ -49,7 +49,7 @@ class DataLoaders():
         #else:
         edge_sampler = dgl.dataloading.NeighborSampler([0])
             
-        node_sampler = dgl.dataloading.NeighborSampler([*[1 for i in range(n_layers - 1)], 10])
+        node_sampler = dgl.dataloading.NeighborSampler([*[2 for i in range(n_layers - 1)], 2])
 
         # Batch size parameter corresponds to the positive edges, whereas our parameter corresponds to the total batch size. 
         edge_pos_size = parameters.edge_batch_size // (parameters.neg_sample_size + 1)
@@ -94,7 +94,7 @@ class DataLoaders():
                 'article': th.tensor(dataset.purchase_history['article_nid'].unique(), dtype=th.int32)
             },
             node_sampler,
-            batch_size=parameters.embedding_batch_size,
+            batch_size=50000,
             shuffle=True,
             drop_last=False,
             num_workers=0)

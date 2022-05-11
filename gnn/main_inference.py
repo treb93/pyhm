@@ -7,7 +7,8 @@ import pandas as pd
 import numpy as np
 import torch
 from environment import Environment
-from gnn.src.metrics import get_recommendation_nids
+from src.get_overall_metrics import get_overall_metrics
+from src.metrics import get_recommendation_nids, precision_at_k
 from src.classes.dataloaders import DataLoaders
 from src.classes.dataset import Dataset
 from src.classes.graphs import Graphs
@@ -17,7 +18,7 @@ from parameters import Parameters
 from src.model.conv_model import ConvModel
 
 
-def inference_ondemand(user_ids,  # List or 'all'
+def inference_ondemand(first_half,  
                        environment: Environment,
                        parameters: Parameters,
                        ):
@@ -84,92 +85,147 @@ def inference_ondemand(user_ids,  # List or 'all'
     print("Initialize Dataloaders.")
     dataloaders = DataLoaders(graphs, dataset, parameters, environment)
     
+    #if first_half == True : 
+    #    offset = 0
+    #    customers = dataset.customers.iloc[0: 700000]
+    #else :
+    #    customers = dataset.customers.iloc[700000:len(dataset.customers)].copy()
     
-
+    customers = dataset.customers
+    
     model.eval()
     with torch.no_grad():
-        
-        # Get embeddings for all graph.
-        for input_nodes, output_nodes, blocks in dataloaders.dataloader_embedding:
-        
-            embeddings = model.get_embeddings(blocks, blocks[0].srcdata['features'])
             
-            graphs.prediction_graph.nodes['article'].data['h'][output_nodes['article']] = embeddings['article']
-            graphs.prediction_graph.nodes['customer'].data['h'][output_nodes['customer']] = embeddings['customer']
-            
-        
-        # Process recommandations
-        
-        customers_per_batch = 200
-        current_index = 0
-        length = graphs.history_graph.num_nodes('customer')
+        customers_per_graph = 100000
+        index_for_graphs = 0
 
-        recommendation_chunks = []
+        customer_embeddings = []
         recommandation_dataframes = []
+
+        while index_for_graphs < len(customers):
+            
+            index_graph_end = min(len(customers), index_for_graphs + customers_per_graph)
+            #index_graph_end = graphs.prediction_graph.num_nodes('customer')
+            
+            print(f"\rProcess subgraph for customers {index_for_graphs} - {index_graph_end}")
+            print(f"Num articles in prediction: {graphs.prediction_graph.num_nodes('article')}")
+                        
+            subgraph = dgl.node_subgraph(graphs.history_graph, {
+                'article': range(graphs.prediction_graph.num_nodes('article')),
+                #'customer': customers.iloc[index_for_graphs:index_graph_end]['customer_nid'].values
+                'customer': range(index_for_graphs, index_graph_end)
+            })
+            
+            # Checks that the node IDS of the subgraph are in the same order and continuous.
+            # assert (subgraph.nodes['customer'].data['_ID'].numpy() == range(index_for_graphs, index_graph_end)).min()
+            # assert (subgraph.nodes['article'].data['_ID'].numpy() == range(0, len(dataset.articles['article_nid']))).min()
+    
+            embeddings = model.get_embeddings(subgraph, {
+                'article': subgraph.nodes['article'].data['features'],
+                'customer': subgraph.nodes['customer'].data['features'],
+            })
+            
+            articles_embeddings = embeddings['article']
+
+            graphs.history_graph.nodes['article'].data['h'][0:graphs.prediction_graph.num_nodes('article')] = embeddings['article']
+            graphs.history_graph.nodes['customer'].data['h'][index_for_graphs : index_graph_end] = embeddings['customer']
+
+            
+            
+            # Process recommandations
+            customers_per_batch = 200
+            index_for_recommandations = index_for_graphs
+            recommendation_chunks = []
+            
+            precision_list = np.array([])
+            
+            while index_for_recommandations < index_graph_end:
+            
+                index_batch_end = min(index_graph_end, index_for_recommandations + customers_per_batch)
+                
+                customer_nids = np.arange(index_for_recommandations, index_batch_end)
+                
+                print(f"\rProcessing train recommendations for customers {index_for_recommandations} - {index_batch_end}            ", end = "")
+                new_recommendations = get_recommendation_nids({
+                    'article': articles_embeddings.to(environment.device),
+                    'customer': graphs.history_graph.nodes['customer'].data['h'][index_for_recommandations: index_batch_end].to(environment.device),
+                }, parameters, environment, cutoff = max(parameters.precision_cutoffs), model = model)
+                
+                # precision = precision_at_k(new_recommendations, customer_nids, dataset, parameters)
+                # 
+                # if precision_list.shape[0] == 0:
+                #     precision_list = np.array([precision])
+                # else: 
+                #     precision_list = np.append(precision_list, [precision], axis = 0)
+                
+                recommendation_chunks.append(
+                    np.concatenate([customer_nids.reshape((-1, 1)), new_recommendations], axis = 1)
+                )
+                
+                # Go to next recommandation batch.
+                index_for_recommandations += customers_per_batch
+
+            # Build recommandation chunks.
+            print(f"\rChunk recommandations for customers {index_for_graphs} - {index_graph_end}")
+            dataframe = pd.DataFrame(np.concatenate(recommendation_chunks))
+            
+            recommandation_dataframes.append(dataframe)
+            # Save chunks.
+            dataframe.to_pickle(f"../pickles/gnn_recommandations_{len(recommandation_dataframes)}.pkl")
+            
+            # Go to next graph.
+            index_for_graphs += customers_per_graph
+            
+            
+            
+        # print("Save embeddings on dataset.", len(customer_embeddings))
+        # customers['embeddings'] = customer_embeddings
+            
         
-        # Backup nid indexes to disk.
-        customer_index = dataset.customers[['customer_id', 'customer_nid']]
-        customer_index.to_pickle('pickles/gnn_customer_index.pkl')
+        #customer_index = customers[['customer_id', 'customer_nid', 'embeddings']]
+        customer_index = customers[['customer_id', 'customer_nid']]
+        customer_index.to_pickle(f'../pickles/gnn_customer_index.pkl')
         
+        #article_index = dataset.articles[['article_id', 'article_nid', 'embeddings']]
         article_index = dataset.articles[['article_id', 'article_nid']]
-        article_index.to_pickle('pickles/gnn_article_index.pkl')
-
-        while current_index < length :
-            
-            # TODO: les chopper autrement ?
-            customer_nids = dataset.customers.loc[current_index: current_index + customers_per_batch, 'customer_nid'].values
-            
-            print(f"\rProcessing train recommendations for customers {current_index} - {current_index + customers_per_batch}            ", end = "")
-            new_recommendations = get_recommendation_nids({
-                'article': graphs.prediction_graph.nodes['article'].data['h'].to(environment.device),
-                'customer': graphs.prediction_graph.nodes['customer'].data['h'][customer_nids].to(environment.device),
-            }, parameters, environment, cutoff = max(parameters.precision_cutoffs), model = model)
-            
-            
-            recommendation_chunks.append(
-                torch.cat([customer_nids, new_recommendations], dim = 1).numpy()
-            )
-
-            # Backup chunks every 100 000 users.
-            if current_index % 100000 == 99999 or current_index + customers_per_batch > len(dataset.customers):
-                print("Backup recommandations for customers {}")
-                dataframe = pd.DataFrame(np.concatenate(recommendation_chunks))
-                
-                recommendation_chunks = []
-                
-                recommandation_dataframes.append(dataframe)
-                dataframe.to_pickle(f"pickles/gnn_recommandations_{len(recommandation_dataframes)}.pkl")
-            
-            current_index += customers_per_batch
-
+        article_index.to_pickle('../pickles/gnn_article_index.pkl')
+        
+        
     # Prepare dataframes.
     print("Concatenate and prepare dataframes.")
     recommandations = pd.concat(recommandation_dataframes)
     
-    # Add real customers ID.
-    recommandations = recommandations.merge(customer_index, left_on = "0", right_on = "customer_nid", on = "left")
     
+    dataset.purchased_list.to_pickle(f"../pickles/gnn_purchase_list.pkl")
+    
+    recommandations.to_pickle(f"../pickles/gnn_recommandations_raw.pkl")
+    
+    # Add real customers ID.
+    recommandations = recommandations.merge(customer_index[['customer_id', 'customer_nid']], left_on = 0, right_on = "customer_nid", how = "left")
+
     # Add real articles IDs
     for i in range(12):
-        recommandations = recommandations.merge(article_index, left_on = f"{i+1}", right_on = "article_nid", on = "left")
-        recommandations.rename({f"article_id": "article_{i}"}, axis = 1, inplace = True)
+        recommandations = recommandations.merge(article_index[['article_id', 'article_nid']], left_on = i+1, right_on = "article_nid", how = "left")
+        recommandations.rename({f"article_id": f"article_{i}"}, axis = 1, inplace = True)
         
     # Remove unused columns
+    recommandations.drop(columns = ['article_nid_x', 'article_nid_y'], axis = 1, inplace = True)
     recommandations.drop(columns = [i for i in range(13)], axis = 1, inplace = True)
-    
-    # Save expanded recommandation list.
-    recommandations.to_pickle("pickles/gnn_recommandations_expanded.pkl")
-    
-    # Save compiled submission.
 
-    recommandations['prediction'] = recommandations.apply(lambda x: [x[f"article_{i}"] for i in range (12)], axis = 1)
-    
+    # Save expanded recommandation list.
+    recommandations.to_pickle(f"../pickles/gnn_recommandations_expanded.pkl")
+
+    # Save compiled submission.
+    recommandations['prediction'] = recommandations.apply(lambda x: list([x[f"article_{i}"] for i in range (12)]), axis = 1)
+    recommandations['prediction'] = recommandations['prediction'].apply(lambda x: ' '.join(x))
+
     submission = pd.read_pickle(environment.customers_path)
     submission = submission[['customer_id']]
     submission = submission.merge(
         recommandations[['customer_id', 'prediction']], how='left', on='customer_id')
 
-    submission.to_csv('../submission_gnn.csv', index=False)
+
+    submission.to_csv(f"../submissions/submission_gnn.csv", index=False)
     
     return
 
@@ -181,8 +237,7 @@ def inference_ondemand(user_ids,  # List or 'all'
               multiple=True,
               default=['all'],
               help="IDs of users for which to generate recommendations. Either list of user ids, or 'all'.")
-@click.option('--use_saved_graph', count=True,
-              help='If true, will use graph that was saved on disk. Need to import ID mapping for users & items.')
+@click.option('--first_half', count=True)
 @click.option('--trained_model_path', default='model.pth',
               help='Path where fully trained model is saved.')
 @click.option('--use_saved_already_bought', count=True,
@@ -200,17 +255,18 @@ def inference_ondemand(user_ids,  # List or 'all'
 @click.option('--remove', default=0.99,
               help='Percentage of users to remove from graph if used_saved_graph = True. If more than 0, user_ids might'
                    ' not be in the graph. However, higher "remove" allows for faster inference.')
-def main(params_path, user_ids, use_saved_graph, trained_model_path,
+def main(params_path, user_ids, first_half, trained_model_path,
          use_saved_already_bought, graph_path, ctm_id_path, pdt_id_path,
          already_bought_path, k, remove):
     
     
     environment = Environment()
     parameters = Parameters({
-        'embedding_on_full_set': True
+       'embedding_on_full_set': True,
+       'include_last_week_in_history': True
     })
 
-    inference_ondemand(user_ids,  # List or 'all'
+    inference_ondemand(first_half,  # 'all' | 'first-half' | 'last-half'
                        environment,
                        parameters
     )

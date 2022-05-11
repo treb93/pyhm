@@ -11,8 +11,8 @@ class Environment:
 
         self.search_result_path = "../pickles/search_result_table.pkl"
 
-        #self.model_path = 'models/FULL_Precision_180_Epochs_0.03_2022-05-0219:25.pth'
-        self.model_path = 0
+        self.model_path = 'models/Modèle 1/FULL_Precision_2.30_2022-05-0900:38.pth'
+        #self.model_path = 0
 
         self.cuda = torch.cuda.is_available()
         self.device = torch.device('cuda') if self.cuda else torch.device('cpu')

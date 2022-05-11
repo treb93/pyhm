@@ -23,6 +23,7 @@ from logging_config import get_logger
 log = get_logger(__name__)
 
 def launch_training(
+    dataset,
     environment,
     parameters,
     visualization,
@@ -54,12 +55,6 @@ def launch_training(
         folder 'models'.
     """
 
-    print("Load dataset.")
-    
-    # Create full train set
-    dataset = Dataset(
-        environment, parameters
-    )
 
     print("Initialize graphs.")
     # Initialize graph & features
@@ -156,15 +151,66 @@ def main(
 
     environment = Environment()
 
-    parameters = Parameters({})
+    print("Load dataset.")
+    
 
+    # Model 1 - 2 layers Medium with pool_nn_weighted - mean
+    parameters = Parameters({      
+        #'aggregator_hetero': 'mean',
+        #'aggregator_type': 'pool_nn_weighted',
+        #'hidden_dim': 256,
+        #'out_dim': 128,
+        #'n_layers': 2,
+        #'lr': 0.00005
+    })
+    
+    # Create full train set
+    dataset = Dataset(
+        environment, parameters
+    )
+    
+    
     launch_training(
+        dataset,
         environment=environment,
         parameters=parameters,
         visualization=visualization,
         check_embedding=check_embedding,
     )
 
+    # Model 2 - 3 layers Small with pool_nn - mean
+    # parameters = Parameters({      
+    #     'aggregator_hetero': 'mean',
+    #     'aggregator_type': 'pool_nn',
+    #     'hidden_dim': 192,
+    #     'out_dim': 96,
+    #     'n_layers': 3
+    # })
+# 
+    # launch_training(
+    #     dataset,
+    #     environment=environment,
+    #     parameters=parameters,
+    #     visualization=visualization,
+    #     check_embedding=check_embedding,
+    # )
+# 
+    # # Model 3 - 3 layers Small with pool_nn - mean
+    # parameters = Parameters({      
+    #     'aggregator_hetero': 'mean',
+    #     'aggregator_type': 'pool_nn',
+    #     'hidden_dim': 256,
+    #     'out_dim': 128,
+    #     'n_layers': 3
+    # })
+# 
+    # launch_training(
+    #     dataset,
+    #     environment=environment,
+    #     parameters=parameters,
+    #     visualization=visualization,
+    #     check_embedding=check_embedding,
+    # )
 
 if __name__ == '__main__':
     main()

@@ -209,7 +209,7 @@ def train_loop(model: ConvModel,
 
         ############
         # METRICS
-        if get_metrics and (epoch % 10 == 9 or epoch == parameters.num_epochs - 1):
+        if get_metrics and (epoch % 5 == 0 or epoch == parameters.num_epochs - 1):
                 
             model.eval()
             with torch.no_grad():

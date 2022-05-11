@@ -54,7 +54,7 @@ class Dataset():
     @property
     def customers_in_prediction_nid(self) -> np.ndarray:
         """List of the customer node IDs in the prediction graph."""
-        return self._articles_in_prediction_nid
+        return self._customers_in_prediction_nid
     
 
     def __init__(self, environment: Environment, parameters: Parameters):
@@ -76,38 +76,39 @@ class Dataset():
         articles = pd.read_pickle(environment.articles_path)
         
 
+        purchase_history = transactions[transactions['week_number']
+                                        <= parameters.weeks_of_purchases]
 
-        if parameters.embedding_on_full_set == True:
-            purchase_history = transactions[transactions['week_number']
-                                            <= parameters.weeks_of_purchases]
-        else:
-            purchase_history = transactions[transactions['week_number']
-                                            <= parameters.weeks_of_purchases]
+        # Remove a defined amout of customers from the set.
+        if parameters.remove:
+            customer_to_keep_ids = purchases_to_predict['customer_id'].unique()
+            
+            np.random.shuffle(customer_to_keep_ids)
+            nb_customers = int(customer_to_keep_ids.shape[0] * (1 - parameters.remove))
+            customer_to_keep_ids = customer_to_keep_ids[0:nb_customers]
+            
+            purchases_to_predict = purchases_to_predict[purchases_to_predict['customer_id'].isin(customer_to_keep_ids)]
+            purchase_history = purchase_history[purchase_history['customer_id'].isin(customer_to_keep_ids)]
+            
+            del customer_to_keep_ids
+        
+        customers_in_prediction_ids = purchases_to_predict['customer_id'].unique()
+        article_in_prediction_ids = purchases_to_predict['article_id'].unique()
+        
 
-            
-            # Remove a defined amout of customers from the set.
-            if parameters.remove:
-                customer_to_keep_ids = purchases_to_predict['customer_id'].unique()
-                
-                np.random.shuffle(customer_to_keep_ids)
-                nb_customers = int(customer_to_keep_ids.shape[0] * (1 - parameters.remove))
-                customer_to_keep_ids = customer_to_keep_ids[0:nb_customers]
-                
-                purchases_to_predict = purchases_to_predict[purchases_to_predict['customer_id'].isin(customer_to_keep_ids)]
-                purchase_history = purchase_history[purchase_history['customer_id'].isin(customer_to_keep_ids)]
-                
-                del customer_to_keep_ids
-            
-            customers_in_prediction_ids = purchases_to_predict['customer_id'].unique()
-            article_in_prediction_ids = purchases_to_predict['article_id'].unique()
-            
-
+        if not parameters.include_last_week_in_history:
             purchase_history = purchase_history[purchase_history['week_number'] > 0]
+        
+        
+        
+        # Separate customers who are in the prediction DataFrame from the others.
+        # TODO: At this point we don't use articles that are not in purchase_history_with_prediction, 
+        # because the article list has to be the same when switchin full set mode on / off (otherwise the scores are waisted)
+        purchase_history_without_prediction = purchase_history[~purchase_history['customer_id'].isin(customers_in_prediction_ids)]
+        purchase_history_with_prediction = purchase_history[purchase_history['customer_id'].isin(customers_in_prediction_ids)]
             
-            # Separate customers who are in the prediction DataFrame from the others.
-            purchase_history_with_prediction = purchase_history[purchase_history['customer_id'].isin(customers_in_prediction_ids)]
-            purchase_history_without_prediction = purchase_history[~purchase_history['customer_id'].isin(customers_in_prediction_ids)]
-            
+        if parameters.embedding_on_full_set == False:
+        
             # Remerge the two DataFrame after reducing the without prediction one, according to the ratio parameter.
             if parameters.customers_without_prediction_ratio:
                 # Get the list of not-to-be-predicted customers to add.
@@ -123,56 +124,55 @@ class Dataset():
                 
             else: 
                 purchase_history = purchase_history_with_prediction
+            
+        # Remove customers that don't have history & articles that are not in purchase_history_with_prediction (for ID management purpose)
+        customers_in_history_ids = purchase_history_with_prediction['customer_id'].unique()
+        articles_in_history_ids = purchase_history_with_prediction['article_id'].unique()
                 
-            # Remove customers & articles that don't have history (for ID management purpose)
-            customers_in_history_ids = purchase_history['customer_id'].unique()
-            articles_in_history_ids = purchase_history['article_id'].unique()
-            
-            purchases_to_predict = purchases_to_predict[purchases_to_predict['customer_id'].isin(customers_in_history_ids)]
-            purchases_to_predict = purchases_to_predict[purchases_to_predict['article_id'].isin(articles_in_history_ids)]
-            
-            del customers_in_history_ids
-            del articles_in_history_ids
-            
-            
-            
-            # Update article and customer's lists.
-            article_id_list = pd.concat([purchases_to_predict['article_id'], purchase_history['article_id']]).unique()
-            customer_id_list = pd.concat([purchases_to_predict['customer_id'], purchase_history['customer_id']]).unique()
-            customers_in_prediction_ids = purchases_to_predict['customer_id'].unique()
-            
-            # Only process customers who have transactions.
-            customer_id = pd.Series(customer_id_list).rename('customer_id')
-            customers = customers.merge(
-                customer_id, on='customer_id', how='right')
+        purchases_to_predict = purchases_to_predict[purchases_to_predict['customer_id'].isin(customers_in_history_ids)]
+        purchases_to_predict = purchases_to_predict[purchases_to_predict['article_id'].isin(articles_in_history_ids)]
+        
+        del customers_in_history_ids
+        del articles_in_history_ids
+        
+        
+        # Update article and customer's lists.
+        article_id_list = pd.concat([purchases_to_predict['article_id'], purchase_history['article_id']]).unique()
+        customer_id_list = pd.concat([purchases_to_predict['customer_id'], purchase_history['customer_id']]).unique()
+        customers_in_prediction_ids = purchases_to_predict['customer_id'].unique()
+        
+        # Only process customers who have transactions.
+        customer_id = pd.Series(customer_id_list).rename('customer_id')
+        customers = customers.merge(
+            customer_id, on='customer_id', how='right')
 
-            # Only process articles for which there is transactions.
-            article_id = pd.Series(article_id_list).rename('article_id')
-            articles = articles.merge(
-                article_id, on='article_id', how='right')
-            
-            
-            # Split customers into train / valid / test set through a field `set` with
-            # values 0 / 1.
+        # Only process articles for which there is transactions.
+        article_id = pd.Series(article_id_list).rename('article_id')
+        articles = articles.merge(
+            article_id, on='article_id', how='right')
+        
+                
+        # Split customers into train / valid / test set through a field `set` with
+        # values 0 / 1.
 
-            customer_id_train, customer_id_valid = train_test_split(
-                customers_in_prediction_ids, 
-                test_size=parameters.valid_size, 
-                shuffle = True
-            )
-            
-            valid_customers = pd.DataFrame(
-                customer_id_valid, columns=['customer_id'])
-            valid_customers['set'] = 1
+        customer_id_train, customer_id_valid = train_test_split(
+            customers_in_prediction_ids, 
+            test_size=parameters.valid_size, 
+            shuffle = True
+        )
+        
+        valid_customers = pd.DataFrame(
+            customer_id_valid, columns=['customer_id'])
+        valid_customers['set'] = 1
 
-            customers = customers.merge(
-                valid_customers, on='customer_id', how='left')
+        customers = customers.merge(
+            valid_customers, on='customer_id', how='left')
 
-            customers['set'] = customers['set'].fillna(0).astype('int32')
+        customers['set'] = customers['set'].fillna(0).astype('int32')
 
         del transactions
 
-
+        
         # Truncate article features if needed.
         if parameters.reduce_article_features == True:
             articles = articles.iloc[:, :141]
@@ -188,13 +188,15 @@ class Dataset():
             'int32')
         customers['customer_nid'] = customers['customer_nid'].astype(
             'int32')
-
+        
+        
         # Update transaction lists with new IDs and validation set Tag.
         purchase_history = articles[['article_id', 'article_nid']].merge(
             purchase_history, on='article_id', how='inner')
 
-        purchase_history = customers[['customer_id', 'customer_nid', 'set']].merge(
+        purchase_history = customers[['customer_id', 'customer_nid']].merge(
             purchase_history, on='customer_id', how='inner')
+
 
         purchases_to_predict = articles[['article_id', 'article_nid']].merge(
             purchases_to_predict, on='article_id', how='inner')
@@ -214,6 +216,7 @@ class Dataset():
         purchases_to_predict['eid'] = purchases_to_predict['eid'].astype(
             'int32')
 
+        
         # Get a grouped version of the purchase list.
         purchased_list = purchases_to_predict.groupby(
             ['customer_nid'], as_index=False).agg(
@@ -222,7 +225,12 @@ class Dataset():
 
         purchased_list['length'] = purchased_list['articles'].apply(
             lambda x: len(x)).astype("int32")
-
+        
+        self._purchased_list = purchased_list
+        self._customers_nid_train = customers[customers['customer_id'].isin(customer_id_train)]['customer_nid'].unique()
+        self._customers_nid_valid = customers[customers['set'] == 1]['customer_nid'].unique()
+    
+        del purchased_list
 
         # Group the old purchases in order to have one edge per (article,
         # customer), with some extra columns.
@@ -243,17 +251,14 @@ class Dataset():
         ).astype("int32")
 
         self._purchase_history = purchase_history
-        self._purchased_list = purchased_list
         self._purchases_to_predict = purchases_to_predict
         self._articles = articles
         self._customers = customers
         
-        self._customers_nid_train = customers[customers['customer_id'].isin(customer_id_train)]['customer_nid'].unique()
-        self._customers_nid_valid = customers[customers['set'] == 1]['customer_nid'].unique()
         
         self._articles_in_prediction_nid = purchases_to_predict.sort_values('article_nid')['article_nid'].unique()
         self._customers_in_prediction_nid = purchases_to_predict.sort_values('customer_nid')['customer_nid'].unique()
-        
+
         
         ### DATA CHECKS - Ensure the nids of prediction graph and history graph will correspond (!)
         # Check that the article and customer prediction nids are similar to a np.arange from 0.
@@ -265,7 +270,15 @@ class Dataset():
         customers_in_history_ids = purchase_history.sort_values('customer_nid')['customer_nid'].unique()
         
         assert (self.articles_in_prediction_nid  == articles_in_history_ids[0 : len(self.articles_in_prediction_nid)]).min()
-        assert (self.customers_in_prediction_nid  == customers_in_history_ids[0 : len(self.articles_in_prediction_nid)]).min()
+        assert (self.customers_in_prediction_nid  == customers_in_history_ids[0 : len(self.customers_in_prediction_nid)]).min()
+        
+        # Checks that the article and customer prediction nids corresponds to the first nids of the customer & article DataFrame.
+        assert (self.articles_in_prediction_nid == self.articles.iloc[0:len(self.articles_in_prediction_nid)]['article_nid'].values).min() # (Checks if it's true for every value in the array)
+        assert (self.customers_in_prediction_nid == self.customers.iloc[0:len(self.customers_in_prediction_nid)]['customer_nid'].values).min()
+        
+        # Checks that the nids of the customer & articles tables are ordered and contiguous from 0.
+        assert (self.customers['customer_nid'].values == np.arange(0, len(self.customers))).min()
+        assert (self.articles['article_nid'].values == np.arange(0, len(self.articles))).min()
         
         
         print("Number of customer in train set : ", len(self._customers_nid_train))
@@ -273,7 +286,6 @@ class Dataset():
         
         # Memory cleaning
         del purchase_history
-        del purchased_list
         del purchases_to_predict
         del articles
         del customers

@@ -119,8 +119,8 @@ class Graphs():
         # if parameters.neighbor_sampling:
         #     
         #     # Create a placeholder for embeddings.
-        #     history_graph.nodes['customer'].data['h'] = th.zeros((history_graph.num_nodes('customer'), parameters.out_dim))
-        #     history_graph.nodes['article'].data['h'] = th.zeros((history_graph.num_nodes('article'), parameters.out_dim))
+        history_graph.nodes['customer'].data['h'] = th.zeros((history_graph.num_nodes('customer'), parameters.out_dim))
+        history_graph.nodes['article'].data['h'] = th.zeros((history_graph.num_nodes('article'), parameters.out_dim))
         # 
         #     self._history_graph = history_graph
         #     self._full_graph = history_graph
