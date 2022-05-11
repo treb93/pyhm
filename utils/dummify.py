@@ -12,13 +12,13 @@ class Dummify(TransformerMixin):
     def transform(self, dataset):
 
         for column in dataset.columns:
-            if dataset[column].dtype != 'category':
+            if not isinstance(dataset[column].dtype, pd.CategoricalDtype):
                 continue
 
             dummies = pd.get_dummies(
                 dataset[column], prefix=column, prefix_sep=":")
             dataset = pd.concat([dataset, dummies], axis=1)
-            dataset.drop(column=column, axis=1, inplace=True)
+            dataset.drop(columns=column, axis=1, inplace=True)
 
         return dataset
 

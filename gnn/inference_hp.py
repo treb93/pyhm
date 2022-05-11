@@ -2,11 +2,11 @@ import math
 
 import numpy as np
 import torch
+from src.model.conv_model import ConvModel
 
 from src.utils_data import DataLoader, DataPaths, assign_graph_features
 
 from src.builder import (create_graph)
-from src.model import ConvModel
 from src.sampling import train_valid_split, generate_dataloaders
 from src.metrics import get_metrics_at_k
 from src.train.run import get_embeddings
@@ -16,11 +16,12 @@ cuda = torch.cuda.is_available()
 device = torch.device('cuda') if cuda else torch.device('cpu')
 num_workers = 4 if cuda else 0
 
+
 def inference_fn(trained_model,
                  remove,
                  fixed_params,
                  overwrite_fixed_params=False,
-                 days_of_purchases=710,
+                 weeks_of_purchases=710,
                  days_of_clicks=710,
                  lifespan_of_items=710,
                  **params):
@@ -38,7 +39,7 @@ def inference_fn(trained_model,
     overwrite_fixed_params:
         If true, training parameters will overwritten by the parameters below. Can be useful if need to test the model
         on different parameters, e.g. that includes older clicks or purchases.
-    days_of_purchases, days_of_clicks, lifespan_of_items:
+    weeks_of_purchases, days_of_clicks, lifespan_of_items:
         All parameters that can overwrite the training parameters. Only useful if overwrite_fixed_params is True.
     params:
         All other parameters used during training.
@@ -57,6 +58,7 @@ def inference_fn(trained_model,
     if isinstance(fixed_params, str):
         path = fixed_params
         fixed_params = read_data(path)
+
         class objectview(object):
             def __init__(self, d):
                 self.__dict__ = d
@@ -71,7 +73,7 @@ def inference_fn(trained_model,
     data_paths = DataPaths()
     fixed_params.remove = remove
     if overwrite_fixed_params:
-        fixed_params.days_of_purchases = days_of_purchases
+        fixed_params.weeks_of_purchases = weeks_of_purchases
         fixed_params.days_of_clicks = days_of_clicks
         fixed_params.lifespan_of_items = lifespan_of_items
     data = DataLoader(data_paths, fixed_params)
@@ -86,10 +88,11 @@ def inference_fn(trained_model,
                                         **params,
                                         )
 
-    dim_dict = {'user': valid_graph.nodes['user'].data['features'].shape[1],
-                'item': valid_graph.nodes['item'].data['features'].shape[1],
-                'out': params['out_dim'],
-                'hidden': params['hidden_dim']}
+    dim_dict = {
+        'customer': valid_graph.nodes['customer'].data['features'].shape[1],
+        'article': valid_graph.nodes['article'].data['features'].shape[1],
+        'out': params['out_dim'],
+        'hidden': params['hidden_dim']}
 
     all_sids = None
     if 'sport' in valid_graph.ntypes:
@@ -142,7 +145,8 @@ def inference_fn(trained_model,
                              neg_sample_size=params['neg_sample_size'],
                              )
 
-    num_batches_test = math.ceil((len(test_uids) + len(all_iids)) / fixed_params.node_batch_size)
+    num_batches_test = math.ceil(
+        (len(test_uids) + len(all_iids)) / fixed_params.node_batch_size)
 
     # Import model
     if isinstance(trained_model, str):
@@ -173,14 +177,16 @@ def inference_fn(trained_model,
                                     params['embedding_layer'],
                                     )
 
-        for ground_truth in [data.ground_truth_purchase_test, data.ground_truth_test]:
-            precision, recall, coverage = get_metrics_at_k(
+        for ground_truth in [
+                data.ground_truth_purchase_test,
+                data.ground_truth_test]:
+            precision = get_metrics_at_k(
                 embeddings,
                 valid_graph,
                 trained_model,
                 params['out_dim'],
                 ground_truth,
-                all_eids_dict[('user', 'buys', 'item')],
+                all_eids_dict[('customer', 'buys', 'article')],
                 fixed_params.k,
                 True,  # Remove already bought
                 cuda,

@@ -6,31 +6,21 @@ import dgl
 import pandas as pd
 import numpy as np
 import torch
+from environment import Environment
+from src.get_overall_metrics import get_overall_metrics
+from src.metrics import get_recommendation_nids, precision_at_k
+from src.classes.dataloaders import DataLoaders
+from src.classes.dataset import Dataset
+from src.classes.graphs import Graphs
+from src.get_dimension_dictionnary import get_dimension_dictionnary
+from parameters import Parameters
 
-from src.builder import create_graph
-from src.model import ConvModel
-from src.utils_data import DataPaths, DataLoader, FixedParameters, assign_graph_features
-from src.utils_inference import read_graph, fetch_uids, postprocess_recs
-from src.train.run import get_embeddings
-from src.metrics import get_recs, create_already_bought
-from src.utils import read_data
-
-cuda = torch.cuda.is_available()
-device = torch.device('cuda') if cuda else torch.device('cpu')
-num_workers = 4 if cuda else 0
+from src.model.conv_model import ConvModel
 
 
-def inference_ondemand(user_ids,  # List or 'all'
-                       use_saved_graph: bool,
-                       trained_model_path: str,
-                       use_saved_already_bought: bool,
-                       graph_path=None,
-                       ctm_id_path=None,
-                       pdt_id_path=None,
-                       already_bought_path=None,
-                       k=10,
-                       remove=.99,
-                       **params,
+def inference_ondemand(first_half,  
+                       environment: Environment,
+                       parameters: Parameters,
                        ):
     """
     Given a fully trained model, return recommendations specific to each user.
@@ -63,129 +53,181 @@ def inference_ondemand(user_ids,  # List or 'all'
     Recommendations for all user ids.
 
     """
-    # Load & preprocess data
-    # Graph
-    if use_saved_graph:
-        graph = read_graph(graph_path)
-        ctm_id_df = read_data(ctm_id_path)
-        pdt_id_df = read_data(pdt_id_path)
-    else:
-        # Create graph
-        data_paths = DataPaths()
-        fixed_params = FixedParameters(num_epochs=0, start_epoch=0,  # Not used (only used in training)
-                                       # Not used (only used in training)
-                                       patience=0, edge_batch_size=0,
-                                       remove=remove, item_id_type=params['item_id_type'],
-                                       duplicates=params['duplicates'])
-        data = DataLoader(data_paths, fixed_params)
-        ctm_id_df = data.ctm_id
-        pdt_id_df = data.pdt_id
 
-        graph = create_graph(
-            data.graph_schema,
-        )
-        graph = assign_graph_features(graph,
-                                      fixed_params,
-                                      data,
-                                      **params,
-                                      )
-    # Preprocess: fetch right user ids
-    if user_ids[0] == 'all':
-        test_uids = np.arange(graph.num_nodes('user'))
-    else:
-        test_uids = fetch_uids(user_ids,
-                               ctm_id_df)
-    # Remove already bought
-    if use_saved_already_bought:
-        already_bought_dict = read_data(already_bought_path)
-    else:
-        bought_eids = graph.out_edges(u=test_uids, form='eid', etype='buys')
-        already_bought_dict = create_already_bought(graph, bought_eids)
-
-    # Load model
-    dim_dict = {'user': graph.nodes['user'].data['features'].shape[1],
-                'item': graph.nodes['item'].data['features'].shape[1],
-                'out': params['out_dim'],
-                'hidden': params['hidden_dim']}
-    if 'sport' in graph.ntypes:
-        dim_dict['sport'] = graph.nodes['sport'].data['features'].shape[1]
-    trained_model = ConvModel(
-        graph,
-        params['n_layers'],
-        dim_dict,
-        params['norm'],
-        params['dropout'],
-        params['aggregator_type'],
-        params['pred'],
-        params['aggregator_hetero'],
-        params['embedding_layer'],
+    # TODO: Implement on demand.
+    
+    print("Load dataset.")
+    
+    # Create full train set
+    dataset = Dataset(
+        environment, parameters
     )
-    trained_model.load_state_dict(
-        torch.load(
-            trained_model_path,
-            map_location=device))
-    if cuda:
-        trained_model = trained_model.to(device)
 
-    # Create dataloader
-    all_iids = np.arange(graph.num_nodes('item'))
-    test_node_ids = {'user': test_uids, 'item': all_iids}
-    n_layers = params['n_layers']
-    if params['embedding_layer']:
-        n_layers = n_layers - 1
-    sampler = dgl.dataloading.MultiLayerFullNeighborSampler(n_layers)
-    nodeloader_test = dgl.dataloading.NodeDataLoader(
-        graph,
-        test_node_ids,
-        sampler,
-        batch_size=128,
-        shuffle=True,
-        drop_last=False,
-        num_workers=num_workers
+    print("Initialize graphs.")
+    # Initialize graph & features
+    graphs = Graphs(dataset, parameters)
+    
+    
+
+    dim_dict = get_dimension_dictionnary(graphs, parameters)
+
+
+
+    print("Build model.")
+    # Initialize model
+    model = ConvModel(dim_dict, parameters)
+
+    print("Import model.")
+    model.load_state_dict(
+        torch.load(environment.model_path)
     )
-    num_batches_test = math.ceil((len(test_uids) + len(all_iids)) / 128)
 
-    # Fetch recs
-    trained_model.eval()
+    print("Initialize Dataloaders.")
+    dataloaders = DataLoaders(graphs, dataset, parameters, environment)
+    
+    #if first_half == True : 
+    #    offset = 0
+    #    customers = dataset.customers.iloc[0: 700000]
+    #else :
+    #    customers = dataset.customers.iloc[700000:len(dataset.customers)].copy()
+    
+    customers = dataset.customers
+    
+    model.eval()
     with torch.no_grad():
-        embeddings = get_embeddings(graph,
-                                    params['out_dim'],
-                                    trained_model,
-                                    nodeloader_test,
-                                    num_batches_test,
-                                    cuda,
-                                    device,
-                                    params['embedding_layer'],
-                                    )
-        recs = get_recs(graph,
-                        embeddings,
-                        trained_model,
-                        params['out_dim'],
-                        k,
-                        test_uids,
-                        already_bought_dict,
-                        remove_already_bought=True,
-                        cuda=cuda,
-                        device=device,
-                        pred=params['pred'],
-                        use_popularity=params['use_popularity'],
-                        weight_popularity=params['weight_popularity']
-                        )
+            
+        customers_per_graph = 100000
+        index_for_graphs = 0
 
-        # Postprocess: user & item ids
-        processed_recs = postprocess_recs(recs,
-                                          pdt_id_df,
-                                          ctm_id_df,
-                                          params['item_id_type'],
-                                          params['ctm_id_type'])
+        customer_embeddings = []
+        recommandation_dataframes = []
 
-        submission = pd.read_csv('../sample_submission.csv')
-        submission = submission[['customer_id']]
-        submission = submission.merge(
-            processed_recs, how='left', on='customer_id')
+        while index_for_graphs < len(customers):
+            
+            index_graph_end = min(len(customers), index_for_graphs + customers_per_graph)
+            #index_graph_end = graphs.prediction_graph.num_nodes('customer')
+            
+            print(f"\rProcess subgraph for customers {index_for_graphs} - {index_graph_end}")
+            print(f"Num articles in prediction: {graphs.prediction_graph.num_nodes('article')}")
+                        
+            subgraph = dgl.node_subgraph(graphs.history_graph, {
+                'article': range(graphs.prediction_graph.num_nodes('article')),
+                #'customer': customers.iloc[index_for_graphs:index_graph_end]['customer_nid'].values
+                'customer': range(index_for_graphs, index_graph_end)
+            })
+            
+            # Checks that the node IDS of the subgraph are in the same order and continuous.
+            # assert (subgraph.nodes['customer'].data['_ID'].numpy() == range(index_for_graphs, index_graph_end)).min()
+            # assert (subgraph.nodes['article'].data['_ID'].numpy() == range(0, len(dataset.articles['article_nid']))).min()
+    
+            embeddings = model.get_embeddings(subgraph, {
+                'article': subgraph.nodes['article'].data['features'],
+                'customer': subgraph.nodes['customer'].data['features'],
+            })
+            
+            articles_embeddings = embeddings['article']
 
-        submission.to_csv('../submission_gnn_first_iteration.csv', index=False)
-        return processed_recs
+            graphs.history_graph.nodes['article'].data['h'][0:graphs.prediction_graph.num_nodes('article')] = embeddings['article']
+            graphs.history_graph.nodes['customer'].data['h'][index_for_graphs : index_graph_end] = embeddings['customer']
+
+            
+            
+            # Process recommandations
+            customers_per_batch = 200
+            index_for_recommandations = index_for_graphs
+            recommendation_chunks = []
+            
+            precision_list = np.array([])
+            
+            while index_for_recommandations < index_graph_end:
+            
+                index_batch_end = min(index_graph_end, index_for_recommandations + customers_per_batch)
+                
+                customer_nids = np.arange(index_for_recommandations, index_batch_end)
+                
+                print(f"\rProcessing train recommendations for customers {index_for_recommandations} - {index_batch_end}            ", end = "")
+                new_recommendations = get_recommendation_nids({
+                    'article': articles_embeddings.to(environment.device),
+                    'customer': graphs.history_graph.nodes['customer'].data['h'][index_for_recommandations: index_batch_end].to(environment.device),
+                }, parameters, environment, cutoff = max(parameters.precision_cutoffs), model = model)
+                
+                # precision = precision_at_k(new_recommendations, customer_nids, dataset, parameters)
+                # 
+                # if precision_list.shape[0] == 0:
+                #     precision_list = np.array([precision])
+                # else: 
+                #     precision_list = np.append(precision_list, [precision], axis = 0)
+                
+                recommendation_chunks.append(
+                    np.concatenate([customer_nids.reshape((-1, 1)), new_recommendations], axis = 1)
+                )
+                
+                # Go to next recommandation batch.
+                index_for_recommandations += customers_per_batch
+
+            # Build recommandation chunks.
+            print(f"\rChunk recommandations for customers {index_for_graphs} - {index_graph_end}")
+            dataframe = pd.DataFrame(np.concatenate(recommendation_chunks))
+            
+            recommandation_dataframes.append(dataframe)
+            # Save chunks.
+            dataframe.to_pickle(f"../pickles/gnn_recommandations_{len(recommandation_dataframes)}.pkl")
+            
+            # Go to next graph.
+            index_for_graphs += customers_per_graph
+            
+            
+            
+        # print("Save embeddings on dataset.", len(customer_embeddings))
+        # customers['embeddings'] = customer_embeddings
+            
+        
+        #customer_index = customers[['customer_id', 'customer_nid', 'embeddings']]
+        customer_index = customers[['customer_id', 'customer_nid']]
+        customer_index.to_pickle(f'../pickles/gnn_customer_index.pkl')
+        
+        #article_index = dataset.articles[['article_id', 'article_nid', 'embeddings']]
+        article_index = dataset.articles[['article_id', 'article_nid']]
+        article_index.to_pickle('../pickles/gnn_article_index.pkl')
+        
+        
+    # Prepare dataframes.
+    print("Concatenate and prepare dataframes.")
+    recommandations = pd.concat(recommandation_dataframes)
+    
+    
+    dataset.purchased_list.to_pickle(f"../pickles/gnn_purchase_list.pkl")
+    
+    recommandations.to_pickle(f"../pickles/gnn_recommandations_raw.pkl")
+    
+    # Add real customers ID.
+    recommandations = recommandations.merge(customer_index[['customer_id', 'customer_nid']], left_on = 0, right_on = "customer_nid", how = "left")
+
+    # Add real articles IDs
+    for i in range(12):
+        recommandations = recommandations.merge(article_index[['article_id', 'article_nid']], left_on = i+1, right_on = "article_nid", how = "left")
+        recommandations.rename({f"article_id": f"article_{i}"}, axis = 1, inplace = True)
+        
+    # Remove unused columns
+    recommandations.drop(columns = ['article_nid_x', 'article_nid_y'], axis = 1, inplace = True)
+    recommandations.drop(columns = [i for i in range(13)], axis = 1, inplace = True)
+
+    # Save expanded recommandation list.
+    recommandations.to_pickle(f"../pickles/gnn_recommandations_expanded.pkl")
+
+    # Save compiled submission.
+    recommandations['prediction'] = recommandations.apply(lambda x: list([x[f"article_{i}"] for i in range (12)]), axis = 1)
+    recommandations['prediction'] = recommandations['prediction'].apply(lambda x: ' '.join(x))
+
+    submission = pd.read_pickle(environment.customers_path)
+    submission = submission[['customer_id']]
+    submission = submission.merge(
+        recommandations[['customer_id', 'prediction']], how='left', on='customer_id')
+
+
+    submission.to_csv(f"../submissions/submission_gnn.csv", index=False)
+    
+    return
 
 
 @click.command()
@@ -195,8 +237,7 @@ def inference_ondemand(user_ids,  # List or 'all'
               multiple=True,
               default=['all'],
               help="IDs of users for which to generate recommendations. Either list of user ids, or 'all'.")
-@click.option('--use_saved_graph', count=True,
-              help='If true, will use graph that was saved on disk. Need to import ID mapping for users & items.')
+@click.option('--first_half', count=True)
 @click.option('--trained_model_path', default='model.pth',
               help='Path where fully trained model is saved.')
 @click.option('--use_saved_already_bought', count=True,
@@ -214,49 +255,21 @@ def inference_ondemand(user_ids,  # List or 'all'
 @click.option('--remove', default=0.99,
               help='Percentage of users to remove from graph if used_saved_graph = True. If more than 0, user_ids might'
                    ' not be in the graph. However, higher "remove" allows for faster inference.')
-def main(params_path, user_ids, use_saved_graph, trained_model_path,
+def main(params_path, user_ids, first_half, trained_model_path,
          use_saved_already_bought, graph_path, ctm_id_path, pdt_id_path,
          already_bought_path, k, remove):
-    # params = read_data(params_path).
-    trained_model_path = "models/FULL_Recall_3.29_2022-04-1823:30.pth"
-    params = {
-        'aggregator_hetero': 'mean',
-        'aggregator_type': 'mean',
-        'clicks_sample': 0.3,
-        'delta': 0.266,
-        'dropout': 0.01,
-        'hidden_dim': 256,
-        'out_dim': 128,
-        'embedding_layer': True,
-        'lr': 0.00017985194246308484,
-        'n_layers': 5,
-        'neg_sample_size': 2000,
-        'norm': True,
-        'use_popularity': True,
-        'weight_popularity': 0.5,
-        'days_popularity': 7,
-        'purchases_sample': 0.5,
-        'pred': 'cos',
-        'use_recency': True,
-        'item_id_type': 'SPECIFIC ITEM IDENTIFIER',
-        'ctm_id_type': 'CUSTOMER IDENTIFIER',
-        'duplicates': True
-    }
-    params.pop('k', None)
-    params.pop('remove', None)
+    
+    
+    environment = Environment()
+    parameters = Parameters({
+       'embedding_on_full_set': True,
+       'include_last_week_in_history': True
+    })
 
-    inference_ondemand(user_ids=user_ids,  # List or 'all'
-                       use_saved_graph=use_saved_graph,
-                       trained_model_path=trained_model_path,
-                       use_saved_already_bought=use_saved_already_bought,
-                       graph_path=graph_path,
-                       ctm_id_path=ctm_id_path,
-                       pdt_id_path=pdt_id_path,
-                       already_bought_path=already_bought_path,
-                       k=k,
-                       remove=remove,
-                       **params,
-                       )
+    inference_ondemand(first_half,  # 'all' | 'first-half' | 'last-half'
+                       environment,
+                       parameters
+    )
 
 
 if __name__ == '__main__':
