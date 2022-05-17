@@ -1,5 +1,6 @@
 from sklearn.base import TransformerMixin
 import pandas as pd
+import swifter
 
 
 class ListToUniclass(TransformerMixin):
@@ -15,7 +16,7 @@ class ListToUniclass(TransformerMixin):
         self.total_rows = len(dataset)
         self.index = 0
 
-        dataset.apply(lambda x: self.expand_row(x), axis=1)
+        dataset.swifter.apply(lambda x: self.expand_row(x), axis=1)
 
         return pd.DataFrame(
             self.list_for_dataframe,
@@ -28,15 +29,12 @@ class ListToUniclass(TransformerMixin):
                 'in_cross_list'])
 
     def expand_row(self, row):
-        print(
-            f"\r Création DataFrame uniclasse {self.index + 1} / {self.total_rows }",
-            end="")
 
         for article_id in row['shortlist']:
             self.list_for_dataframe.append([
                 row['customer_id'],
                 article_id,
-                1 if article_id in row['purchased_list'] else 0,
+                1 if article_id in row['purchase_list'] else 0,
                 row['pair_list'].index(article_id) if article_id in row['pair_list'] else 100,
                 row['repurchase_list'].index(article_id) if article_id in row['repurchase_list'] else 100,
                 row['cross_list'].index(article_id) if article_id in row['cross_list'] else 100,

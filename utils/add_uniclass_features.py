@@ -14,12 +14,21 @@ class AddUniclassFeatures(TransformerMixin):
     def transform(self, dataset):
         dataset = dataset.merge(self.articles, on = 'article_id', how = 'left')
         dataset = dataset.merge(self.customers, on = 'customer_id', how = 'left', suffixes = ('_article', '_customer'))
-        
-        # Categorical fields
-        categories = ["product_type_name", "product_group_name", 'graphical_appearance_name', 'colour_group_name', 'perceived_colour_value_name', 'perceived_colour_master_name', 'department_name', 'index_name', 'index_group_name', 'section_name', 'garment_group_name', 'club_member_status', 'fashion_news_frequency']
 
-        for category in categories:
-            dataset[category] = dataset[category].astype('category')
+        print("Ajout du score d'âge")
+        data_train_uniclass['age_ratio'] = data_train_uniclass.swifter.apply(lambda x: 
+            x['age_around_15_customer'] * x['age_around_15_article'] +
+            x['age_around_25_customer'] * x['age_around_25_article'] +
+            x['age_around_35_customer'] * x['age_around_35_article'] +
+            x['age_around_45_customer'] * x['age_around_45_article'] +
+            x['age_around_55_customer'] * x['age_around_55_article'] +
+            x['age_around_65_customer'] * x['age_around_65_article']
+        , axis = 1)
             
+        print("Ajout du score de catégorie")
+        data_train_uniclass['index_ratio'] = data_train_uniclass.swifter.apply(lambda x: 
+            x[x['index_group_name'].lower().split('/')[0]]
+        , axis = 1)
+        
         return dataset
         
