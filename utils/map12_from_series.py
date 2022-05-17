@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 
-def map12_from_series(purchased_articles, prediction):
+def map12_from_series(purchased_articles, prediction, max_cutoff = 12):
     """Process the map12 score from the purchased articles and a prediction.
 
     Args:
@@ -29,7 +29,7 @@ def map12_from_series(purchased_articles, prediction):
                         )
                     ),
                     0
-                ) for cutoff in range(0, min(len(x.prediction), 12))),
+                ) for cutoff in range(0, min(len(x.prediction), max_cutoff))),
                 float)
-        ) / min(len(x.purchased_articles), 12),
+        ) / min(len(x.purchased_articles), max_cutoff),
         axis=1)

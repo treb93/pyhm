@@ -169,7 +169,6 @@ def main(
         environment, parameters
     )
     
-    
     launch_training(
         dataset,
         environment=environment,
