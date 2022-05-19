@@ -16,7 +16,7 @@ class AddUniclassFeatures(TransformerMixin):
         dataset = dataset.merge(self.customers, on = 'customer_id', how = 'left', suffixes = ('_article', '_customer'))
 
         print("Ajout du score d'âge")
-        data_train_uniclass['age_ratio'] = data_train_uniclass.swifter.apply(lambda x: 
+        dataset['age_ratio'] = dataset.swifter.apply(lambda x: 
             x['age_around_15_customer'] * x['age_around_15_article'] +
             x['age_around_25_customer'] * x['age_around_25_article'] +
             x['age_around_35_customer'] * x['age_around_35_article'] +
@@ -26,7 +26,7 @@ class AddUniclassFeatures(TransformerMixin):
         , axis = 1)
             
         print("Ajout du score de catégorie")
-        data_train_uniclass['index_ratio'] = data_train_uniclass.swifter.apply(lambda x: 
+        dataset['index_ratio'] = dataset.swifter.apply(lambda x: 
             x[x['index_group_name'].lower().split('/')[0]]
         , axis = 1)
         

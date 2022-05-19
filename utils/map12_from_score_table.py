@@ -37,9 +37,12 @@ def map12_from_score_table(score_table):
                         )
                     ),
                     0
-                ) for cutoff in range(0, min(len(x.predictions), 12))
+                ) for cutoff in range(min(len(x.predictions), 12))
             ), float)
         ) / min(x.nb_labels, 12),
         axis=1)
+
+
+    score_list['map12'] = score_list['map12'].fillna(0)
 
     return score_list[['customer_id', 'map12']]
